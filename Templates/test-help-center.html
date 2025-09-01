@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tests for applyHelpCenterConfig</title>
+  <link rel="stylesheet" href="https://code.jquery.com/qunit/qunit-2.20.0.css">
+</head>
+<body>
+  <div id="qunit"></div>
+  <div id="qunit-fixture">
+    <div id="help-top-cards"></div>
+    <div id="faq-list"></div>
+    <div id="contact-card">
+      <div class="grid">
+        <div>
+          <h5 class="font-semibold text-sm mb-3">Contatos</h5>
+          <div class="grid grid-cols-2 gap-6 text-center"></div>
+        </div>
+        <div class="pl-4">
+          <h5 class="font-semibold text-sm mb-2">Informações</h5>
+          <p class="text-xs text-gray-600">Atendimento via WhatsApp. Clique em um contato ao lado.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/qunit/qunit-2.20.0.js"></script>
+  <script>
+    // Function to be tested
+    function applyHelpCenterConfig() {
+      return fetch('/api/help-center')
+        .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar Central de Ajuda'))
+        .then(cfg => {
+          if (!cfg || typeof cfg !== 'object') return;
+
+          // Atualiza cards superiores
+          const grid = document.getElementById('help-top-cards');
+          if (grid && Array.isArray(cfg.topCards) && cfg.topCards.length) {
+            grid.innerHTML = cfg.topCards.slice(0, 4).map(c => `
+              <div class="bg-white rounded-lg shadow p-6 text-center hover:shadow-lg transition-shadow cursor-pointer">
+                <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${c.icon === 'phone' ? 'bg-purple-100 text-purple-600' : c.icon === 'mail' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}">
+                  <span class="material-symbols-outlined text-2xl">${c.icon || 'help'}</span>
+                </div>
+                <h3 class="font-bold text-lg mb-2">${c.title || ''}</h3>
+                <p class="text-gray-600 text-sm">${c.desc || ''}</p>
+              </div>
+            `).join('');
+          }
+
+          // Atualiza FAQ
+          const faqList = document.getElementById('faq-list');
+          if (faqList && Array.isArray(cfg.faq) && cfg.faq.length) {
+            faqList.innerHTML = cfg.faq.map(item => `
+              <div class="border rounded-lg faq-item">
+                <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                  <span>${item.q}</span>
+                  <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+                </button>
+                <div class="faq-answer hidden px-4 pb-4 text-gray-600">${item.a}</div>
+              </div>
+            `).join('');
+            // rebind o acordeon
+            const list = document.getElementById('faq-list');
+            if (list) list.dataset.bound = '';
+          }
+
+          // Atualiza contatos do card "Entre em contato"
+          const card = document.getElementById('contact-card');
+          if (card && Array.isArray(cfg.contacts) && cfg.contacts.length) {
+            const btns = cfg.contacts.slice(0, 2).map(c => `
+              <button type="button" class="flex flex-col items-center space-y-2 contact-whatsapp" data-number="${c.number}" data-name="${c.name}">
+                <span class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-500 text-white">
+                  <span class="material-symbols-outlined">whatsapp</span>
+                </span>
+                <span class="text-sm font-medium">${c.name}</span>
+              </button>
+            `).join('');
+            const grid = card.querySelector('.grid');
+            if (grid) grid.innerHTML = `
+              <div>
+                <h5 class="font-semibold text-sm mb-3">Contatos</h5>
+                <div class="grid grid-cols-2 gap-6 text-center">${btns}</div>
+              </div>
+              <div class="pl-4">
+                <h5 class="font-semibold text-sm mb-2">Informações</h5>
+                <p class="text-xs text-gray-600">Atendimento via WhatsApp. Clique em um contato ao lado.</p>
+              </div>
+            `;
+          }
+      });
+    }
+
+    QUnit.module('applyHelpCenterConfig', function(hooks) {
+      let originalFetch;
+
+      hooks.beforeEach(function() {
+        originalFetch = window.fetch;
+      });
+
+      hooks.afterEach(function() {
+        window.fetch = originalFetch;
+      });
+
+      QUnit.test('should update top cards, FAQ, and contacts on successful fetch', function(assert) {
+        const done = assert.async();
+        const mockData = {
+          topCards: [
+            { icon: 'phone', title: 'Test Phone', desc: 'Test Desc' },
+          ],
+          faq: [
+            { q: 'Test Q', a: 'Test A' },
+          ],
+          contacts: [
+            { number: '123', name: 'Test Contact' },
+          ],
+        };
+
+        window.fetch = function(url) {
+          assert.strictEqual(url, '/api/help-center', 'Correct API endpoint is called');
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockData),
+          });
+        };
+
+        applyHelpCenterConfig().then(() => {
+          const topCards = document.getElementById('help-top-cards');
+          assert.ok(topCards.innerHTML.includes('Test Phone'), 'Top cards are updated');
+
+          const faqList = document.getElementById('faq-list');
+          assert.ok(faqList.innerHTML.includes('Test Q'), 'FAQ list is updated');
+
+          const contactCard = document.getElementById('contact-card');
+          assert.ok(contactCard.innerHTML.includes('Test Contact'), 'Contact card is updated');
+
+          done();
+        });
+      });
+
+      QUnit.test('should handle empty config', function(assert) {
+        const done = assert.async();
+        window.fetch = function() {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({}),
+          });
+        };
+
+        applyHelpCenterConfig().then(() => {
+          const topCards = document.getElementById('help-top-cards');
+          assert.strictEqual(topCards.innerHTML, '', 'Top cards are empty');
+
+          const faqList = document.getElementById('faq-list');
+          assert.strictEqual(faqList.innerHTML, '', 'FAQ list is empty');
+
+          const contactCard = document.getElementById('contact-card');
+          assert.ok(contactCard.innerHTML.includes('Contatos'), 'Contact card is not updated');
+
+          done();
+        });
+      });
+
+      QUnit.test('should handle fetch error', function(assert) {
+        const done = assert.async();
+        window.fetch = function() {
+          return Promise.reject('Network error');
+        };
+
+        applyHelpCenterConfig().catch(error => {
+          assert.strictEqual(error, 'Falha ao carregar Central de Ajuda', 'Error is handled correctly');
+          done();
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard do Usuário - HelpDesk</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url(https://fonts.googleapis.com/css2?family=Lato&display=swap);
+    @import url(https://fonts.googleapis.com/css2?family=Open+Sans&display=swap);
+    @import url(https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined);
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#f3f1ff',
+              100: '#e9e5ff',
+              200: '#d5cfff',
+              300: '#b7a9ff',
+              400: '#9478ff',
+              500: '#7341ff',
+              600: '#631bff',
+              700: '#611bf8',
+              800: '#4607d0',
+              900: '#3c08aa',
+              950: '#220174'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="flex h-screen bg-gray-100">
+    <!-- Sidebar -->
+    <div class="w-64 bg-white shadow-lg">
+      <div class="p-6">
+        <div class="flex items-center space-x-3">
+          <div class="h-12 w-12 rounded-full bg-primary-500 text-white flex items-center justify-center">
+            <span class="material-symbols-outlined">person</span>
+          </div>
+          <div>
+            <h2 class="font-bold">{{ session.user_name or 'Usuário' }}</h2>
+            <p class="text-sm text-gray-500">Cliente</p>
+          </div>
+        </div>
+        
+        <div class="mt-8 space-y-2">
+          <a href="#" data-section="dashboard" onclick="showSection('dashboard', event)" 
+             class="nav-link flex items-center space-x-3 p-3 rounded-lg bg-primary-50 text-primary-600">
+            <span class="material-symbols-outlined">dashboard</span>
+            <span>Dashboard</span>
+          </a>
+          <a href="#" data-section="tickets" onclick="showSection('tickets', event)" 
+             class="nav-link flex items-center space-x-3 p-3 rounded-lg hover:bg-primary-50 transition-colors group">
+            <span class="material-symbols-outlined text-gray-600 group-hover:text-primary-600">support_agent</span>
+            <span class="group-hover:text-primary-600">Chamados</span>
+          </a>
+          <a href="#" data-section="new-ticket" onclick="showSection('new-ticket', event)" 
+             class="nav-link flex items-center space-x-3 p-3 rounded-lg hover:bg-primary-50 transition-colors group">
+            <span class="material-symbols-outlined text-gray-600 group-hover:text-primary-600">add_circle</span>
+            <span class="group-hover:text-primary-600">Abrir Chamado</span>
+          </a>
+          <a href="#" data-section="settings" onclick="showSection('settings', event)" 
+             class="nav-link flex items-center space-x-3 p-3 rounded-lg hover:bg-primary-50 transition-colors group">
+            <span class="material-symbols-outlined text-gray-600 group-hover:text-primary-600">settings</span>
+            <span class="group-hover:text-primary-600">Configurações</span>
+          </a>
+          <a href="#" data-section="help" onclick="showSection('help', event)" 
+             class="nav-link flex items-center space-x-3 p-3 rounded-lg hover:bg-primary-50 transition-colors group">
+            <span class="material-symbols-outlined text-gray-600 group-hover:text-primary-600">help</span>
+            <span class="group-hover:text-primary-600">Central de Ajuda</span>
+          </a>
+        </div>
+      </div>
+      
+      <div class="border-t p-6">
+        <a href="/logout" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-red-50 transition-colors group">
+          <span class="material-symbols-outlined text-gray-600 group-hover:text-red-600">logout</span>
+          <span class="group-hover:text-red-600">Sair</span>
+        </a>
+      </div>
+    </div>
+    <!-- Main Content -->
+    <div class="flex-1 overflow-y-auto">
+      <!-- Header -->
+      <header class="bg-white shadow p-4">
+        <div class="container mx-auto">
+          <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold" id="page-title">Dashboard</h1>
+            <div class="flex items-center space-x-4">
+              <button class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <span class="material-symbols-outlined">notifications</span>
+              </button>
+              <button class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <span class="material-symbols-outlined">email</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+      <!-- Dashboard Section -->
+      <main class="container mx-auto p-6" id="dashboard-section">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm text-gray-500">Total de Chamados</p>
+                <h3 class="text-2xl font-bold" id="total-tickets">0</h3>
+              </div>
+              <div class="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center text-primary-600">
+                <span class="material-symbols-outlined">support</span>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="w-full h-2 bg-gray-200 rounded-full">
+                <div class="h-2 bg-primary-500 rounded-full" style="width:75%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm text-gray-500">Chamados Atendidos</p>
+                <h3 class="text-2xl font-bold" id="resolved-tickets">0</h3>
+              </div>
+              <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                <span class="material-symbols-outlined">task_alt</span>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="w-full h-2 bg-gray-200 rounded-full">
+                <div class="h-2 bg-green-500 rounded-full" style="width:75%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm text-gray-500">Chamados Pendentes</p>
+                <h3 class="text-2xl font-bold" id="pending-tickets">0</h3>
+              </div>
+              <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600">
+                <span class="material-symbols-outlined">pending</span>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="w-full h-2 bg-gray-200 rounded-full">
+                <div class="h-2 bg-yellow-500 rounded-full" style="width:25%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm text-gray-500">Tempo Médio Resposta</p>
+                <h3 class="text-2xl font-bold">8h</h3>
+              </div>
+              <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                <span class="material-symbols-outlined">schedule</span>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="w-full h-2 bg-gray-200 rounded-full">
+                <div class="h-2 bg-blue-500 rounded-full" style="width:60%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="bg-white rounded-lg shadow p-6">
+              <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">Histórico de Chamados</h2>
+                <div class="flex items-center space-x-2">
+                  <select id="dashboard-sort-order" onchange="sortRecentTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                    <option value="newest">Mais recentes</option>
+                    <option value="oldest">Mais antigos</option>
+                    <option value="priority">Por prioridade</option>
+                    <option value="type">Por tipo</option>
+                    <option value="status">Por status</option>
+                  </select>
+                  <button onclick="showSection('new-ticket')" 
+                          class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors flex items-center">
+                    <span class="material-symbols-outlined mr-2">add</span>
+                    Abrir Chamado
+                  </button>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="min-w-full" id="tickets-table">
+                  <thead>
+                    <tr class="border-b">
+                      <th class="py-3 px-4 text-left">ID</th>
+                      <th class="py-3 px-4 text-left">Tipo</th>
+                      <th class="py-3 px-4 text-left">Classificação</th>
+                      <th class="py-3 px-4 text-left">Status</th>
+                      <th class="py-3 px-4 text-left">Data</th>
+                      <th class="py-3 px-4 text-left">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tickets-tbody">
+                    <!-- Tickets will be loaded here -->
+                  </tbody>
+                </table>
+                <div class="flex justify-between items-center mt-4">
+                  <div class="text-sm text-gray-500">
+                    Mostrando <span id="showing-tickets-count">0</span> de <span id="total-tickets-count">0</span> chamados
+                  </div>
+                  <div class="flex space-x-2">
+                    <button id="prev-page-btn" onclick="prevPage()" class="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      <span class="material-symbols-outlined text-sm">chevron_left</span>
+                    </button>
+                    <button id="next-page-btn" onclick="nextPage()" class="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      <span class="material-symbols-outlined text-sm">chevron_right</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <div class="bg-white rounded-lg shadow p-6">
+              <h2 class="text-xl font-bold mb-4">Resposta do Suporte</h2>
+              <div class="border rounded-lg p-4 mb-4">
+                <div class="flex items-start space-x-3">
+                  <div class="h-10 w-10 rounded-full bg-blue-500 text-white flex items-center justify-center flex-shrink-0">
+                    <span class="material-symbols-outlined text-sm">support_agent</span>
+                  </div>
+                  <div>
+                    <div class="flex items-center">
+                      <h4 class="font-bold">Técnico Carlos</h4>
+                      <span class="text-xs text-gray-500 ml-2">• 2h atrás</span>
+                    </div>
+                    <p class="text-sm mt-1">Olá! Verificamos o seu problema e identificamos que será necessário uma visita técnica. Poderia informar sua disponibilidade para os próximos dias?</p>
+                  </div>
+                </div>
+              </div>
+              <h3 class="font-medium mb-2">Sua Resposta</h3>
+              <textarea class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-3" 
+                        rows="3" placeholder="Digite sua resposta..."></textarea>
+              <div class="flex justify-end">
+                <button class="bg-primary-500 text-white py-2 px-4 rounded-lg hover:bg-primary-600 transition-colors">
+                  Responder
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <!-- Tickets Section -->
+      <main class="container mx-auto p-6 hidden" id="tickets-section">
+        <div class="bg-white rounded-lg shadow p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold">Meus Chamados</h2>
+            <div class="flex items-center space-x-2">
+              <select id="all-tickets-sort-order" onchange="sortAllTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <option value="newest">Mais recentes</option>
+                <option value="oldest">Mais antigos</option>
+                <option value="priority">Por prioridade</option>
+                <option value="type">Por tipo</option>
+                <option value="status">Por status</option>
+              </select>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full">
+              <thead>
+                <tr class="border-b">
+                  <th class="py-3 px-4 text-left">ID</th>
+                  <th class="py-3 px-4 text-left">Assunto</th>
+                  <th class="py-3 px-4 text-left">Tipo</th>
+                  <th class="py-3 px-4 text-left">Prioridade</th>
+                  <th class="py-3 px-4 text-left">Status</th>
+                  <th class="py-3 px-4 text-left">Data</th>
+                  <th class="py-3 px-4 text-left">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="all-tickets-tbody">
+                <!-- All tickets will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+      <!-- New Ticket Section -->
+      <main class="container mx-auto p-6 hidden" id="new-ticket-section">
+        <div class="bg-white rounded-lg shadow p-6">
+          <h2 class="text-xl font-bold mb-6">Abrir Novo Chamado</h2>
+          <form id="new-ticket-form" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label class="block text-gray-700 mb-2" for="ticket-type">Tipo</label>
+                <select id="ticket-type" required 
+                        class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  <option value="">Selecione um tipo</option>
+                  <!-- Tipos de chamados serão carregados dinamicamente -->
+                </select>
+              </div>
+              
+              <div>
+                <label class="block text-gray-700 mb-2" for="ticket-priority">Classificação</label>
+                <select id="ticket-priority" required 
+                        class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  <option value="">Selecione uma classificação</option>
+                  <option value="Baixa">Baixa</option>
+                  <option value="Média">Média</option>
+                  <option value="Alta">Alta</option>
+                  <option value="Urgente">Urgente</option>
+                </select>
+              </div>
+            </div>
+            
+            <div>
+              <label class="block text-gray-700 mb-2" for="ticket-subject">Assunto</label>
+              <input type="text" id="ticket-subject" required 
+                     class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                     placeholder="Resumo do problema">
+            </div>
+            
+            <div>
+              <label class="block text-gray-700 mb-2" for="ticket-description">Descrição</label>
+              <textarea id="ticket-description" rows="6" required 
+                        class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                        placeholder="Descreva seu problema em detalhes..."></textarea>
+            </div>
+            
+            <div>
+              <label class="block text-gray-700 mb-2">Anexar Arquivo</label>
+              <div id="attachments-dropzone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50 transition-colors">
+                <span class="material-symbols-outlined text-4xl text-gray-400">cloud_upload</span>
+                <p class="mt-2 text-sm text-gray-500">Arraste e solte arquivos aqui ou clique para selecionar</p>
+                <p class="text-xs text-gray-400 mt-1">Máximo: 10MB (JPG, PNG, PDF, XLS, XLSX, CSV)</p>
+                <input id="ticket-attachments" type="file" class="hidden" multiple accept=".jpg,.jpeg,.png,.pdf,.xls,.xlsx,.csv"/>
+                <div id="attachments-list" class="mt-2 text-sm text-gray-600"></div>
+              </div>
+            </div>
+            
+            <div class="flex gap-4">
+              <button type="submit" 
+                      class="bg-primary-500 text-white py-2 px-6 rounded-lg hover:bg-primary-600 transition-colors">
+                Enviar Chamado
+              </button>
+              <button type="button" onclick="document.getElementById('new-ticket-form').reset()" 
+                      class="bg-gray-500 text-white py-2 px-6 rounded-lg hover:bg-gray-600 transition-colors">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </main>
+      <!-- Settings Section -->
+      <main class="container mx-auto p-6 hidden" id="settings-section">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Profile Tab -->
+          <div class="lg:col-span-3">
+            <div class="bg-white rounded-lg shadow">
+              <div class="border-b">
+                <nav class="flex space-x-8 px-6">
+                  <button onclick="showSettingsTab('profile', event)" 
+                          class="settings-tab py-4 px-1 border-b-2 border-primary-500 text-primary-600 font-medium">
+                    Perfil
+                  </button>
+                  <button onclick="showSettingsTab('security', event)" 
+                          class="settings-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                    Segurança
+                  </button>
+                  <button onclick="showSettingsTab('notifications', event)" 
+                          class="settings-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                    Notificações
+                  </button>
+                </nav>
+              </div>
+              
+              <!-- Profile Settings -->
+              <div id="profile-settings" class="p-6">
+                <h3 class="text-lg font-semibold mb-4">Informações Pessoais</h3>
+                <p class="text-gray-600 mb-6">Atualize suas informações de perfil</p>
+                
+                <form id="profile-form" class="space-y-6">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label class="block text-gray-700 mb-2" for="profile-first-name">Nome</label>
+                      <input id="profile-first-name" type="text" value="" placeholder="Nome"
+                             class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    </div>
+                    <div>
+                      <label class="block text-gray-700 mb-2" for="profile-last-name">Sobrenome</label>
+                      <input id="profile-last-name" type="text" value="" placeholder="Sobrenome"
+                             class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-gray-700 mb-2" for="profile-email">Email</label>
+                    <input id="profile-email" type="email" value="" placeholder="seuemail@exemplo.com"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  </div>
+                  
+                  <div>
+                    <label class="block text-gray-700 mb-2" for="profile-phone">Telefone</label>
+                    <input id="profile-phone" type="tel" value="" placeholder="(00) 00000-0000"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  </div>
+                  
+                  <button type="submit" 
+                          class="bg-primary-500 text-white py-2 px-6 rounded-lg hover:bg-primary-600 transition-colors">
+                    Salvar Alterações
+                  </button>
+                </form>
+              </div>
+              
+              <!-- Security Settings -->
+              <div id="security-settings" class="p-6 hidden">
+                <h3 class="text-lg font-semibold mb-4">Configurações de Segurança</h3>
+                <p class="text-gray-600 mb-6">Gerencie sua senha e configurações de segurança</p>
+                
+                <form id="security-form" class="space-y-6">
+                  <div>
+                    <label class="block text-gray-700 mb-2" for="current-password">Senha Atual</label>
+                    <input id="current-password" type="password" placeholder="Digite sua senha atual" 
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  </div>
+                  
+                  <div>
+                    <label class="block text-gray-700 mb-2" for="new-password">Nova Senha</label>
+                    <input id="new-password" type="password" placeholder="Digite sua nova senha" 
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  </div>
+                  
+                  <div>
+                    <label class="block text-gray-700 mb-2" for="confirm-password">Confirmar Nova Senha</label>
+                    <input id="confirm-password" type="password" placeholder="Confirme sua nova senha" 
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  </div>
+                  
+                  <button type="submit" 
+                          class="bg-primary-500 text-white py-2 px-6 rounded-lg hover:bg-primary-600 transition-colors">
+                    Alterar Senha
+                  </button>
+                </form>
+              </div>
+              
+              <!-- Notifications Settings -->
+              <div id="notifications-settings" class="p-6 hidden">
+                <h3 class="text-lg font-semibold mb-4">Preferências de Notificação</h3>
+                <p class="text-gray-600 mb-6">Configure como você deseja receber notificações</p>
+                
+                <form id="notifications-form" class="space-y-6">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h4 class="font-medium">Email sobre novos chamados</h4>
+                      <p class="text-sm text-gray-500">Receba emails quando houver atualizações nos seus chamados</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input id="toggle-email-updates" type="checkbox" class="sr-only peer">
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                    </label>
+                  </div>
+                  
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h4 class="font-medium">SMS para chamados urgentes</h4>
+                      <p class="text-sm text-gray-500">Receba SMS para chamados com classificação urgente</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input id="toggle-sms-urgent" type="checkbox" class="sr-only peer">
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                    </label>
+                  </div>
+                  
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h4 class="font-medium">Notificações push no navegador</h4>
+                      <p class="text-sm text-gray-500">Receba notificações em tempo real no navegador</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input id="toggle-push-realtime" type="checkbox" class="sr-only peer">
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                    </label>
+                  </div>
+                  <div>
+                    <button type="submit" class="bg-primary-500 text-white py-2 px-6 rounded-lg hover:bg-primary-600 transition-colors">Salvar Preferências</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <!-- Help Section -->
+      <main class="container mx-auto p-6 hidden" id="help-section">
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Central de Ajuda</h2>
+          <div id="help-top-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6 text-center hover:shadow-lg transition-shadow cursor-pointer">
+              <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span class="material-symbols-outlined text-2xl text-blue-600">chat</span>
+              </div>
+              <h3 class="font-bold text-lg mb-2">Chat 1</h3>
+              <p class="text-gray-600 text-sm">Fale com o suporte</p>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6 text-center hover:shadow-lg transition-shadow cursor-pointer">
+              <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span class="material-symbols-outlined text-2xl text-green-600">chat</span>
+              </div>
+              <h3 class="font-bold text-lg mb-2">Chat 2</h3>
+              <p class="text-gray-600 text-sm">Fale com o suporte</p>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6 text-center hover:shadow-lg transition-shadow cursor-pointer">
+              <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span class="material-symbols-outlined text-2xl text-purple-600">phone</span>
+              </div>
+              <h3 class="font-bold text-lg mb-2">Telefone</h3>
+              <p class="text-gray-600 text-sm">0800 123 4567</p>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6 text-center hover:shadow-lg transition-shadow cursor-pointer">
+              <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span class="material-symbols-outlined text-2xl text-red-600">mail</span>
+              </div>
+              <h3 class="font-bold text-lg mb-2">Email</h3>
+              <p class="text-gray-600 text-sm">suporte@empresa.com</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-xl font-bold mb-6">Perguntas Frequentes</h3>
+          <p class="text-gray-600 mb-6">Encontre respostas para as dúvidas mais comuns</p>
+          
+          <div class="space-y-4" id="faq-list">
+            <div class="border rounded-lg faq-item">
+              <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                <span>Como abro um novo chamado?</span>
+                <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+              </button>
+              <div class="faq-answer hidden px-4 pb-4 text-gray-600">
+                Vá até a seção &quot;Abrir Chamado&quot;, preencha os campos obrigatórios (tipo, classificação, assunto e descrição) e clique em &quot;Enviar Chamado&quot;.
+              </div>
+            </div>
+            
+            <div class="border rounded-lg faq-item">
+              <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                <span>Qual o prazo de resposta para meu chamado?</span>
+                <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+              </button>
+              <div class="faq-answer hidden px-4 pb-4 text-gray-600">
+                Em geral respondemos em até 24 horas úteis. Chamados com prioridade &quot;Urgente&quot; recebem tratamento prioritário.
+              </div>
+            </div>
+            
+            <div class="border rounded-lg faq-item">
+              <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                <span>Como acompanho o status do meu chamado?</span>
+                <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+              </button>
+              <div class="faq-answer hidden px-4 pb-4 text-gray-600">
+                Use a seção &quot;Meus Chamados&quot; para ver a listagem e clique em &quot;Ver&quot; para detalhes, anexos e histórico.
+              </div>
+            </div>
+            
+            <div class="border rounded-lg faq-item">
+              <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                <span>Posso cancelar um chamado aberto?</span>
+                <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+              </button>
+              <div class="faq-answer hidden px-4 pb-4 text-gray-600">
+                Caso ainda não tenha sido atendido, solicite o cancelamento respondendo ao ticket ou abrindo um novo solicitando o fechamento.
+              </div>
+            </div>
+            
+            <div class="border rounded-lg faq-item">
+              <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                <span>Como altero minhas informações de contato?</span>
+                <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+              </button>
+              <div class="faq-answer hidden px-4 pb-4 text-gray-600">
+                Na aba &quot;Configurações&quot;, em &quot;Perfil&quot;, atualize seu nome, e-mail e telefone e clique em &quot;Salvar Alterações&quot;.
+              </div>
+            </div>
+          </div>
+          
+          <div class="mt-8 p-6 bg-gray-50 rounded-lg">
+            <h4 class="font-bold mb-2">Ainda precisa de ajuda?</h4>
+            <p class="text-gray-600 mb-4">Nossa equipe de suporte está pronta para ajudá-lo</p>
+            <div id="contact-container" class="relative inline-block">
+              <!-- Contact card above the button -->
+              <div id="contact-card" class="absolute bottom-full left-0 mb-2 w-221 bg-white border rounded-lg shadow p-4 z-10 hidden">
+                <div class="grid grid-cols-2 divide-x gap-25">
+                  <div>
+                    <h5 class="font-semibold text-sm mb-3">Contatos</h5>
+                    <div class="grid grid-cols-2 gap-6 text-center">
+                      <button type="button" class="flex flex-col items-center space-y-2 contact-whatsapp" data-number="5551999999999" data-name="Atendimento 1" aria-label="WhatsApp Atendimento 1">
+                        <span class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-500 text-white">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M20.52 3.48A11.9 11.9 0 0 0 12.06 0C5.51.03.3 5.24.33 11.79c.01 2.08.56 4.09 1.6 5.87L0 24l6.48-1.69a11.78 11.78 0 0 0 5.58 1.42h.05c6.55 0 11.76-5.21 11.79-11.76a11.74 11.74 0 0 0-3.38-8.49Zm-8.47 18.2h-.04a9.8 9.8 0 0 1-4.99-1.36l-.36-.21-3.85 1 1.03-3.75-.24-.38a9.83 9.83 0 0 1-1.53-5.25C2.04 6.35 6.38 2 11.99 2a9.78 9.78 0 0 1 6.97 2.89 9.7 9.7 0 0 1 2.86 6.96c-.03 5.6-4.38 9.93-9.77 9.93Zm5.36-7.36c-.29-.15-1.72-.85-1.98-.94-.27-.1-.46-.15-.66.15-.19.29-.76.94-.93 1.13-.17.19-.34.22-.63.07-.29-.15-1.22-.45-2.33-1.43-.86-.76-1.44-1.7-1.6-1.99-.17-.29-.02-.45.13-.6.13-.13.29-.34.43-.5.14-.17.19-.29.29-.48.1-.19.05-.36-.03-.51-.08-.15-.66-1.59-.9-2.17-.24-.58-.48-.5-.66-.5-.17 0-.36-.02-.55-.02-.19 0-.5.07-.76.36-.26.29-1 1-1 2.44 0 1.44 1.02 2.83 1.16 3.02.14.19 1.99 3.04 4.83 4.25.68.29 1.21.46 1.62.58.68.22 1.3.19 1.79.12.55-.08 1.72-.7 1.96-1.37.24-.67.24-1.25.17-1.37-.07-.12-.26-.2-.55-.34Z"/>
+                          </svg>
+                        </span>
+                        <span class="text-sm font-medium">Atendimento 1</span>
+                      </button>
+                      <button type="button" class="flex flex-col items-center space-y-2 contact-whatsapp" data-number="5551888888888" data-name="Atendimento 2" aria-label="WhatsApp Atendimento 2">
+                        <span class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-500 text-white">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M20.52 3.48A11.9 11.9 0 0 0 12.06 0C5.51.03.3 5.24.33 11.79c.01 2.08.56 4.09 1.6 5.87L0 24l6.48-1.69a11.78 11.78 0 0 0 5.58 1.42h.05c6.55 0 11.76-5.21 11.79-11.76a11.74 11.74 0 0 0-3.38-8.49Zm-8.47 18.2h-.04a9.8 9.8 0 0 1-4.99-1.36l-.36-.21-3.85 1 1.03-3.75-.24-.38a9.83 9.83 0 0 1-1.53-5.25C2.04 6.35 6.38 2 11.99 2a9.78 9.78 0 0 1 6.97 2.89 9.7 9.7 0 0 1 2.86 6.96c-.03 5.6-4.38 9.93-9.77 9.93Zm5.36-7.36c-.29-.15-1.72-.85-1.98-.94-.27-.1-.46-.15-.66.15-.19.29-.76.94-.93 1.13-.17.19-.34.22-.63.07-.29-.15-1.22-.45-2.33-1.43-.86-.76-1.44-1.7-1.6-1.99-.17-.29-.02-.45.13-.6.13-.13.29-.34.43-.5.14-.17.19-.29.29-.48.1-.19.05-.36-.03-.51-.08-.15-.66-1.59-.9-2.17-.24-.58-.48-.5-.66-.5-.17 0-.36-.02-.55-.02-.19 0-.5.07-.76.36-.26.29-1 1-1 2.44 0 1.44 1.02 2.83 1.16 3.02.14.19 1.99 3.04 4.83 4.25.68.29 1.21.46 1.62.58.68.22 1.3.19 1.79.12.55-.08 1.72-.7 1.96-1.37.24-.67.24-1.25.17-1.37-.07-.12-.26-.2-.55-.34Z"/>
+                          </svg>
+                        </span>
+                        <span class="text-sm font-medium">Atendimento 2</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="pl-4">
+                    <h5 class="font-semibold text-sm mb-2">Informações</h5>
+                    <p class="text-xs text-gray-600">Atendimento via WhatsApp. Clique em um contato ao lado.</p>
+                  </div>
+                </div>
+              </div>
+              <button id="contact-button" type="button" class="bg-primary-500 text-white py-2 px-4 rounded-lg hover:bg-primary-600 transition-colors flex items-center">
+                <span class="material-symbols-outlined mr-2">phone</span>
+                Entre em contato
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  
+  <!-- Ticket Details Modal -->
+  <div id="ticket-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow max-w-lg w-full p-6 relative">
+      <button id="close-ticket-modal" class="absolute top-3 right-3 p-1 rounded hover:bg-gray-100">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+      <h3 class="text-lg font-bold mb-4">Detalhes do Chamado</h3>
+      <div id="ticket-modal-body" class="space-y-2 text-sm"></div>
+    </div>
+  </div>
+
+  <script>
+    // Variável global para controlar o envio de formulários
+    let isSubmitting = false;
+    let evtSource = null;
+
+    // Navigation functions
+    function showSection(sectionName, event) {
+      const ev = event || window.event;
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+      
+      // Hide all sections
+      const sections = ['dashboard', 'tickets', 'new-ticket', 'settings', 'help'];
+      sections.forEach(section => {
+        const el = document.getElementById(section + '-section'); 
+        if (el) el.classList.add('hidden');
+      });
+      
+      // Show selected section
+      const target = document.getElementById(sectionName + '-section'); 
+      if (target) target.classList.remove('hidden');
+      
+      // Update page title
+      const titles = {
+        'dashboard': 'Dashboard',
+        'tickets': 'Meus Chamados',
+        'new-ticket': 'Abrir Chamado',
+        'settings': 'Configurações',
+        'help': 'Central de Ajuda'
+      };
+      const titleEl = document.getElementById('page-title'); 
+      if (titleEl) titleEl.textContent = titles[sectionName];
+      
+      // Update navigation
+      document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('bg-primary-50', 'text-primary-600');
+        link.classList.add('hover:bg-primary-50');
+      });
+      const clickedLink = document.querySelector(`[data-section="${sectionName}"]`);
+      if (clickedLink) {
+        clickedLink.classList.add('bg-primary-50', 'text-primary-600');
+        clickedLink.classList.remove('hover:bg-primary-50');
+      }
+      
+      // Bind FAQs when opening Help
+      if (sectionName === 'help') bindFAQToggles();
+      
+      // Reload tickets when navigating to Dashboard or Tickets
+      if (sectionName === 'dashboard' || sectionName === 'tickets') {
+        loadTickets();
+      }
+    }
+    
+    function showSettingsTab(tabName, event) {
+      const ev = event || window.event;
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+      
+      // Hide all settings tabs
+      const tabs = ['profile', 'security', 'notifications'];
+      tabs.forEach(tab => {
+        document.getElementById(tab + '-settings').classList.add('hidden');
+      });
+      
+      // Show selected tab
+      document.getElementById(tabName + '-settings').classList.remove('hidden');
+      
+      // Update tab navigation
+      document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.classList.remove('border-primary-500', 'text-primary-600');
+        tab.classList.add('border-transparent', 'text-gray-500');
+      });
+      
+      if (ev && ev.target) {
+        ev.target.classList.add('border-primary-500', 'text-primary-600');
+        ev.target.classList.remove('border-transparent', 'text-gray-500');
+      }
+    }
+    
+    // Load tickets data
+    // Global variables
+    let allUserTickets = [];
+    let recentTickets = [];
+    let currentPage = 1;
+    let ticketsPerPage = 5;
+    
+    function loadTickets() {
+      fetch('/api/tickets')
+        .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar tickets'))
+        .then(tickets => {
+          if (!Array.isArray(tickets)) tickets = [];
+          allUserTickets = tickets;
+          recentTickets = [...tickets];
+          updateDashboardStats(tickets);
+          renderTicketsTable();
+          updatePagination();
+          bindTicketRowActions();
+        })
+        .catch(error => console.error('Error loading tickets:', error));
+    }
+    
+    // Carregar tipos de chamados da API
+    function loadTicketTypes() {
+      fetch('/api/ticket-types')
+        .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar tipos de chamados'))
+        .then(types => {
+          if (!Array.isArray(types)) types = [];
+          updateTicketTypeSelect(types);
+        })
+        .catch(error => console.error('Error loading ticket types:', error));
+    }
+    
+    // Atualizar o select de tipos de chamados
+    function updateTicketTypeSelect(types) {
+      const select = document.getElementById('ticket-type');
+      if (!select) return;
+      
+      // Manter apenas a opção padrão
+      select.innerHTML = '<option value="">Selecione um tipo</option>';
+      
+      // Adicionar os tipos de chamados da API
+      types.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.name;
+        option.textContent = type.name;
+        select.appendChild(option);
+      });
+    }
+    
+    function updateDashboardStats(tickets) {
+      const total = tickets.length;
+      const resolved = tickets.filter(t => t.status === 'Resolvido' || t.status === 'Fechado').length;
+      const pending = tickets.filter(t => t.status === 'Aberto' || t.status === 'Pendente').length;
+      
+      document.getElementById('total-tickets').textContent = total;
+      document.getElementById('resolved-tickets').textContent = resolved;
+      document.getElementById('pending-tickets').textContent = pending;
+    }
+    
+    function renderTicketsTable() {
+      renderRecentTickets();
+      renderAllTickets();
+    }
+    
+    function renderRecentTickets() {
+      const tbody = document.getElementById('tickets-tbody');
+      if (!tbody) return;
+      
+      // Calcular o índice inicial e final para a página atual
+      const startIndex = (currentPage - 1) * ticketsPerPage;
+      const endIndex = startIndex + ticketsPerPage;
+      const ticketsToShow = recentTickets.slice(startIndex, endIndex);
+      
+      tbody.innerHTML = ticketsToShow.map(ticket => `
+        <tr class="border-b hover:bg-gray-50 transition-colors">
+          <td class="py-3 px-4">#${ticket.id}</td>
+          <td class="py-3 px-4">${ticket.type}</td>
+          <td class="py-3 px-4">${ticket.priority}</td>
+          <td class="py-3 px-4">
+            <span class="px-2 py-1 rounded-full text-xs ${getStatusColor(ticket.status)}">${ticket.status}</span>
+          </td>
+          <td class="py-3 px-4">${new Date(ticket.created_at).toLocaleDateString('pt-BR')}</td>
+          <td class="py-3 px-4">
+            <button class="view-ticket-btn p-1 hover:bg-gray-100 rounded-full transition-colors" data-ticket-id="${ticket.id}">
+              <span class="material-symbols-outlined text-gray-600">visibility</span>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+    
+    function renderAllTickets() {
+      const allTbody = document.getElementById('all-tickets-tbody');
+      if (!allTbody) return;
+      
+      allTbody.innerHTML = allUserTickets.map(ticket => `
+        <tr class="border-b hover:bg-gray-50 transition-colors">
+          <td class="py-3 px-4">#${ticket.id}</td>
+          <td class="py-3 px-4">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
+          <td class="py-3 px-4">${ticket.type}</td>
+          <td class="py-3 px-4">${ticket.priority}</td>
+          <td class="py-3 px-4">
+            <span class="px-2 py-1 rounded-full text-xs ${getStatusColor(ticket.status)}">${ticket.status}</span>
+          </td>
+          <td class="py-3 px-4">${ticket.created_at ? new Date(ticket.created_at).toLocaleDateString('pt-BR') : ''}</td>
+          <td class="py-3 px-4">
+            <button class="view-ticket-btn p-1 hover:bg-gray-100 rounded-full transition-colors" data-ticket-id="${ticket.id}">
+              <span class="material-symbols-outlined text-gray-600">visibility</span>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+    
+    function updatePagination() {
+      const paginationInfo = document.getElementById('pagination-info');
+      const prevButton = document.getElementById('prev-page');
+      const nextButton = document.getElementById('next-page');
+      
+      if (!paginationInfo || !prevButton || !nextButton) return;
+      
+      const totalPages = Math.ceil(recentTickets.length / ticketsPerPage);
+      paginationInfo.textContent = `Página ${currentPage} de ${totalPages || 1} (${recentTickets.length} chamados)`;
+      
+      prevButton.disabled = currentPage <= 1;
+      nextButton.disabled = currentPage >= totalPages;
+    }
+    
+    function prevPage() {
+      if (currentPage > 1) {
+        currentPage--;
+        renderRecentTickets();
+        updatePagination();
+      }
+    }
+    
+    function nextPage() {
+      const totalPages = Math.ceil(recentTickets.length / ticketsPerPage);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderRecentTickets();
+        updatePagination();
+      }
+    }
+    
+    function sortRecentTickets() {
+      const sortOrder = document.getElementById('recent-tickets-sort-order').value;
+      
+      switch (sortOrder) {
+        case 'newest':
+          recentTickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          break;
+        case 'oldest':
+          recentTickets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          break;
+        case 'priority':
+          const priorityOrder = { 'Alta': 0, 'Média': 1, 'Baixa': 2 };
+          recentTickets.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+          break;
+        case 'type':
+          recentTickets.sort((a, b) => a.type.localeCompare(b.type));
+          break;
+        case 'status':
+          recentTickets.sort((a, b) => a.status.localeCompare(b.status));
+          break;
+      }
+      
+      // Resetar para a primeira página após ordenar
+      currentPage = 1;
+      renderRecentTickets();
+      updatePagination();
+    }
+    
+    function sortAllTickets() {
+      const sortOrder = document.getElementById('all-tickets-sort-order').value;
+      
+      switch (sortOrder) {
+        case 'newest':
+          allUserTickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          break;
+        case 'oldest':
+          allUserTickets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          break;
+        case 'priority':
+          const priorityOrder = { 'Alta': 0, 'Média': 1, 'Baixa': 2 };
+          allUserTickets.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+          break;
+        case 'type':
+          allUserTickets.sort((a, b) => a.type.localeCompare(b.type));
+          break;
+        case 'status':
+          allUserTickets.sort((a, b) => a.status.localeCompare(b.status));
+          break;
+      }
+      
+      renderAllTickets();
+    }
+    
+    function getStatusColor(status) {
+      const colors = {
+        'Aberto': 'bg-blue-100 text-blue-800',
+        'Em Andamento': 'bg-yellow-100 text-yellow-800',
+        'Pendente': 'bg-orange-100 text-orange-800',
+        'Resolvido': 'bg-green-100 text-green-800',
+        'Fechado': 'bg-gray-100 text-gray-800'
+      };
+      return colors[status] || 'bg-gray-100 text-gray-800';
+    }
+    
+    // Bind click to view ticket details
+    function bindTicketRowActions() {
+      document.querySelectorAll('.view-ticket-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const ticketId = this.getAttribute('data-ticket-id');
+          if (!ticketId) return;
+          
+          fetch(`/api/tickets/${ticketId}`)
+            .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar detalhes'))
+            .then(ticket => openTicketModal(ticket))
+            .catch(err => alert(err));
+        });
+      });
+    }
+    
+    // Modal for viewing ticket details
+    function getModalElements() {
+      return {
+        modal: document.getElementById('ticket-modal'),
+        modalBody: document.getElementById('ticket-modal-body'),
+        closeBtn: document.getElementById('close-ticket-modal')
+      };
+    }
+    
+    function openTicketModal(ticket) {
+      const { modal, modalBody } = getModalElements();
+      if (!modal || !modalBody) {
+        alert('Não foi possível abrir o modal de detalhes.');
+        return;
+      }
+      
+      const subject = ticket.subject || '(Sem assunto)';
+      const attachments = (ticket.attachments || [])
+        .map(a => `<li class="flex items-center justify-between"><a class="text-primary-600 hover:underline" href="${a.url}" target="_blank">${a.filename}</a><span class="text-xs text-gray-500">${(a.filesize/1024).toFixed(1)} KB</span></li>`)
+        .join('') || '<li class="text-gray-500">Nenhum anexo</li>';
+      
+      modalBody.innerHTML = `
+        <div><span class="font-semibold">ID:</span> #${ticket.id}</div>
+        <div><span class="font-semibold">Tipo:</span> ${ticket.type}</div>
+        <div><span class="font-semibold">Classificação:</span> ${ticket.priority}</div>
+        <div><span class="font-semibold">Assunto:</span> ${subject}</div>
+        <div><span class="font-semibold">Descrição:</span><p class="mt-1 whitespace-pre-line">${ticket.description}</p></div>
+        <div><span class="font-semibold">Anexos:</span><ul class="mt-1 space-y-1">${attachments}</ul></div>
+      `;
+      
+      modal.classList.remove('hidden');
+    }
+    
+    // Helpers: toast notification
+    function showToast(msg) {
+      const t = document.createElement('div');
+      t.className = 'fixed bottom-4 right-4 bg-black text-white px-4 py-2 rounded shadow z-50';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 4000);
+    }
+    
+    // Load user settings into forms
+    async function loadUserSettings() {
+      try {
+        const r = await fetch('/api/user/settings');
+        if (!r.ok) return;
+        const u = await r.json();
+        
+        // Split name into first/last (best-effort)
+        const parts = (u.name || '').trim().split(' ');
+        document.getElementById('profile-first-name').value = parts[0] || '';
+        document.getElementById('profile-last-name').value = parts.slice(1).join(' ');
+        document.getElementById('profile-email').value = u.email || '';
+        document.getElementById('profile-phone').value = u.phone || '';
+        document.getElementById('toggle-email-updates').checked = !!u.email_updates;
+        document.getElementById('toggle-sms-urgent').checked = !!u.sms_urgent;
+        document.getElementById('toggle-push-realtime').checked = !!u.push_realtime;
+        
+        // Start SSE if enabled
+        if (u.push_realtime) {
+          startSSE();
+        }
+      } catch (e) {
+        console.error('Erro ao carregar configurações do usuário', e);
+      }
+    }
+    
+    // SSE + browser Notification API
+    function startSSE() {
+      if (evtSource) return;
+      
+      evtSource = new EventSource('/api/notifications/stream');
+      evtSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'ticket_update') {
+            const msg = `Chamado #${data.ticket.id} (${data.ticket.priority}) - ${data.event}`;
+            showToast(msg);
+            
+            if (Notification && Notification.permission === 'granted') {
+              new Notification('Atualização de Chamado', { body: msg });
+            }
+          }
+        } catch (_) {}
+      };
+      
+      evtSource.onerror = () => {
+        // retry simple
+        stopSSE();
+        setTimeout(startSSE, 3000);
+      };
+    }
+    
+    function stopSSE() {
+      if (evtSource) {
+        try { evtSource.close(); } catch(_) {}
+        evtSource = null;
+      }
+      
+      // Ask browser permission
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+    
+    // FAQ accordion logic
+    function bindFAQToggles() {
+      const list = document.getElementById('faq-list');
+      if (!list) return;
+      
+      // Avoid rebinding
+      if (list.dataset.bound === '1') return; 
+      list.dataset.bound = '1';
+      
+      list.addEventListener('click', (e) => {
+        const btn = e.target.closest('.faq-toggle');
+        if (!btn) return;
+        
+        const item = btn.closest('.faq-item');
+        const answer = item.querySelector('.faq-answer');
+        const icon = btn.querySelector('.faq-icon');
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        
+        // Fechar outras perguntas ao abrir uma nova
+        document.querySelectorAll('#faq-list .faq-toggle[aria-expanded="true"]').forEach(openBtn => {
+          if (openBtn !== btn) {
+            openBtn.setAttribute('aria-expanded', 'false');
+            const openItem = openBtn.closest('.faq-item');
+            const openAnswer = openItem.querySelector('.faq-answer');
+            const openIcon = openBtn.querySelector('.faq-icon');
+            openAnswer.classList.add('hidden');
+            if (openIcon) openIcon.style.transform = 'rotate(0deg)';
+          }
+        });
+        
+        // Toggle atual
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        answer.classList.toggle('hidden', expanded);
+        if (icon) icon.style.transform = expanded ? 'rotate(0deg)' : 'rotate(180deg)';
+      });
+    }
+    
+    // Contact card logic (WhatsApp)
+    function initContactCard() {
+      const toggleBtn = document.getElementById('contact-button');
+      const card = document.getElementById('contact-card');
+      const container = document.getElementById('contact-container');
+      
+      if (!toggleBtn || !card || !container) return;
+      
+      const openCard = () => card.classList.remove('hidden');
+      const closeCard = () => card.classList.add('hidden');
+      const toggleCard = () => card.classList.toggle('hidden');
+      
+      // apply spacing class to buttons (avoid overlap)
+      card.querySelectorAll('.contact-whatsapp').forEach(btn => {
+        btn.classList.add('space-y-2');
+      });
+      
+      // Alterna visibilidade do card
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCard();
+      });
+      
+      // Evita fechar ao clicar dentro do card
+      card.addEventListener('click', (e) => e.stopPropagation());
+      container.addEventListener('click', (e) => e.stopPropagation());
+      
+      // Clique fora fecha
+      document.addEventListener('click', () => closeCard());
+      
+      // Tecla Esc fecha
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeCard();
+      });
+      
+      // Clique em um contato abre o WhatsApp do número escolhido
+      card.addEventListener('click', (e) => {
+        const btn = e.target.closest('.contact-whatsapp');
+        if (!btn) return;
+        
+        const number = btn.dataset.number; // incluir DDI, ex: 55 + DDD + numero
+        const name = btn.dataset.name;
+        const message = encodeURIComponent(`Olá, aqui é do HelpDesk. Gostaria de falar com ${name}.`);
+        const url = `https://wa.me/${number}?text=${message}`; // API wa.me universal
+        
+        window.open(url, '_blank');
+        closeCard();
+      });
+    }
+    
+    // Aplica configurações da Central de Ajuda salvas no admin (via API)
+    function applyHelpCenterConfig() {
+      fetch('/api/help-center')
+        .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar Central de Ajuda'))
+        .then(cfg => {
+          if (!cfg || typeof cfg !== 'object') return;
+          
+          // Atualiza cards superiores
+          const grid = document.getElementById('help-top-cards');
+          if (grid && Array.isArray(cfg.topCards) && cfg.topCards.length) {
+            grid.innerHTML = cfg.topCards.slice(0, 4).map(c => `
+              <div class="bg-white rounded-lg shadow p-6 text-center hover:shadow-lg transition-shadow cursor-pointer">
+                <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${c.icon === 'phone' ? 'bg-purple-100 text-purple-600' : c.icon === 'mail' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}">
+                  <span class="material-symbols-outlined text-2xl">${c.icon || 'help'}</span>
+                </div>
+                <h3 class="font-bold text-lg mb-2">${c.title || ''}</h3>
+                <p class="text-gray-600 text-sm">${c.desc || ''}</p>
+              </div>
+            `).join('');
+          }
+          
+          // Atualiza FAQ
+          const faqList = document.getElementById('faq-list');
+          if (faqList && Array.isArray(cfg.faq) && cfg.faq.length) {
+            faqList.innerHTML = cfg.faq.map(item => `
+              <div class="border rounded-lg faq-item">
+                <button class="faq-toggle w-full text-left p-4 font-medium hover:bg-gray-50 flex justify-between items-center" aria-expanded="false">
+                  <span>${item.q}</span>
+                  <span class="material-symbols-outlined faq-icon transition-transform">expand_more</span>
+                </button>
+                <div class="faq-answer hidden px-4 pb-4 text-gray-600">${item.a}</div>
+              </div>
+            `).join('');
+            
+            // rebind o acordeon
+            const list = document.getElementById('faq-list');
+            if (list) list.dataset.bound = '';
+          }
+          
+          // Atualiza contatos do card "Entre em contato"
+          const card = document.getElementById('contact-card');
+          if (card && Array.isArray(cfg.contacts) && cfg.contacts.length) {
+            const btns = cfg.contacts.slice(0, 2).map(c => `
+              <button type="button" class="flex flex-col items-center space-y-2 contact-whatsapp" data-number="${c.number}" data-name="${c.name}">
+                <span class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-500 text-white">
+                  <span class="material-symbols-outlined">whatsapp</span>
+                </span>
+                <span class="text-sm font-medium">${c.name}</span>
+              </button>
+            `).join('');
+            
+            const grid = card.querySelector('.grid');
+            if (grid) grid.innerHTML = `
+              <div>
+                <h5 class="font-semibold text-sm mb-3">Contatos</h5>
+                <div class="grid grid-cols-2 gap-6 text-center">${btns}</div>
+              </div>
+              <div class="pl-4">
+                <h5 class="font-semibold text-sm mb-2">Informações</h5>
+                <p class="text-xs text-gray-600">Atendimento via WhatsApp. Clique em um contato ao lado.</p>
+              </div>
+            `;
+          }
+        })
+        .catch(error => console.error('Error loading help center config:', error));
+    }
+
+    // Initialize everything when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+      // Set up dropzone for file uploads
+      const dropzone = document.getElementById('attachments-dropzone');
+      const fileInput = document.getElementById('ticket-attachments');
+      const attachmentsList = document.getElementById('attachments-list');
+      loadTickets();
+      loadTicketTypes();
+
+      if (dropzone && fileInput) {
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+          const names = Array.from(fileInput.files).map(f => f.name).join(', ');
+          attachmentsList.textContent = names ? `Selecionados: ${names}` : '';
+        });
+      }
+      
+      // Adicione esta função para recarregar tickets periodicamente
+      function setupPeriodicRefresh() {
+        // Recarregar tickets a cada 30 segundos
+        setInterval(() => {
+          const currentSection = document.querySelector('[data-section].bg-primary-50');
+          if (currentSection) {
+            const sectionName = currentSection.getAttribute('data-section');
+            if (sectionName === 'dashboard' || sectionName === 'tickets') {
+              loadTickets();
+            }
+          }
+        }, 30000);
+      }
+
+      // Inicie o refresh periódico
+      setupPeriodicRefresh();
+
+      // Handle new ticket form submission
+      document.getElementById('new-ticket-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (isSubmitting) return; // prevent double submissions
+        isSubmitting = true;
+        
+        const fd = new FormData();
+        fd.append('type', document.getElementById('ticket-type').value);
+        fd.append('priority', document.getElementById('ticket-priority').value);
+        fd.append('subject', document.getElementById('ticket-subject').value);
+        fd.append('description', document.getElementById('ticket-description').value);
+        
+        if (fileInput) {
+          Array.from(fileInput.files).forEach(f => fd.append('attachments', f));
+        }
+        
+        fetch('/api/tickets', { method: 'POST', body: fd })
+          .then(async (response) => {
+            let data = null;
+            try { data = await response.json(); } catch (_) {}
+            if (!response.ok) {
+              const msg = (data && data.error) ? data.error : 'Erro ao criar chamado.';
+              throw new Error(msg);
+            }
+            return data;
+          })
+          .then((data) => {
+            if (data && data.success) {
+              alert('Chamado criado com sucesso!');
+              this.reset();
+              if (attachmentsList) attachmentsList.textContent = '';
+              loadTickets();
+              showSection('tickets');
+            } else {
+              alert((data && data.error) || 'Erro ao criar chamado.');
+            }
+          })
+          .catch(error => {
+            console.error('Error creating ticket:', error);
+            alert(error.message || 'Erro ao criar chamado. Tente novamente.');
+          })
+          .finally(() => {
+            isSubmitting = false;
+          });
+      });
+      
+      // Profile form submission
+      document.getElementById('profile-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const first = document.getElementById('profile-first-name').value.trim();
+        const last = document.getElementById('profile-last-name').value.trim();
+        const email = document.getElementById('profile-email').value.trim();
+        const phone = document.getElementById('profile-phone').value.trim();
+        const name = [first, last].filter(Boolean).join(' ');
+        
+        try {
+          const r = await fetch('/api/user/settings/profile', {
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, phone })
+          });
+          
+          const data = await r.json().catch(() => null);
+          if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao salvar.');
+          showToast('Perfil atualizado com sucesso');
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      
+      // Security form submission
+      document.getElementById('security-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const current_password = document.getElementById('current-password').value;
+        const new_password = document.getElementById('new-password').value;
+        const confirm_password = document.getElementById('confirm-password').value;
+        
+        try {
+          const r = await fetch('/api/user/settings/security', {
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password, new_password, confirm_password })
+          });
+          
+          const data = await r.json().catch(() => null);
+          if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao alterar senha.');
+          showToast('Senha alterada com sucesso');
+          e.target.reset();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      
+      // Notifications form submission
+      document.getElementById('notifications-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email_updates = document.getElementById('toggle-email-updates').checked;
+        const sms_urgent = document.getElementById('toggle-sms-urgent').checked;
+        const push_realtime = document.getElementById('toggle-push-realtime').checked;
+        
+        try {
+          const r = await fetch('/api/user/settings/notifications', {
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email_updates, sms_urgent, push_realtime })
+          });
+          
+          const data = await r.json().catch(() => null);
+          if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao salvar preferências.');
+          showToast('Preferências salvas');
+          
+          // Manage SSE based on toggle
+          if (push_realtime) startSSE(); else stopSSE();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      
+      // Set up modal close handlers
+      const { modal, closeBtn } = getModalElements();
+      if (closeBtn && modal) {
+        closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+        modal.addEventListener('click', (e) => { 
+          if (e.target.id === 'ticket-modal') modal.classList.add('hidden'); 
+        });
+      }
+      
+      // Initialize page
+      loadTickets();
+      loadUserSettings();
+      applyHelpCenterConfig();
+      initContactCard();
+      
+      // If help is visible by default, bind FAQs
+      if (!document.getElementById('help-section').classList.contains('hidden')) {
+        bindFAQToggles();
+      }
+    });
+  </script>
+</body>
+</html>
