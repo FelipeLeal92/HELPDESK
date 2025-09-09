@@ -31,6 +31,15 @@ def get_db_connection():
         print(f"Erro ao conectar ao banco de dados: {str(e)}")
         raise
 
+def log_event(user_id, message, ticket_id=None):
+    try:
+        conn = get_db_connection()
+        conn.execute("INSERT INTO logs (user_id, ticket_id, message) VALUES (?, ?, ?)", (user_id, ticket_id, message))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Erro ao registrar log: {str(e)}")
+
 def allowed_file(filename: str) -> bool:
     """Check allowed extensions for uploaded files."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -63,6 +72,7 @@ def push_event(user_id: int, payload: dict):
     """Push a JSON-serializable payload to all active SSE streams for a user."""
     if not user_id:
         return
+    print(f"Pushing event to user {user_id}: {payload}")
     message = json.dumps(payload, ensure_ascii=False)
     for q in list(user_event_queues.get(user_id, [])):
         try:
@@ -86,7 +96,7 @@ def check_tables():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
         
-        required_tables = ['users', 'tickets', 'ticket_types', 'ticket_statuses', 'ticket_responses', 'attachments']
+        required_tables = ['users', 'tickets', 'ticket_types', 'ticket_statuses', 'ticket_responses', 'attachments', 'logs']
         
         missing_tables = [table for table in required_tables if table not in tables]
         
@@ -273,11 +283,31 @@ def logout():
     return resp
 
 # API routes for AJAX requests
+@app.route('/api/logs', methods=['GET'])
+def get_logs():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db_connection()
+    logs = conn.execute("SELECT * FROM logs WHERE user_id = ? ORDER BY created_at DESC", (session['user_id'],)).fetchall()
+    conn.close()
+    return jsonify([dict(log) for log in logs])
+
+@app.route('/api/logs/<int:log_id>/read', methods=['PUT'])
+def mark_log_as_read(log_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db_connection()
+    conn.execute("UPDATE logs SET is_read = 1 WHERE id = ? AND user_id = ?", (log_id, session['user_id']))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
 @app.route('/api/notifications/stream')
 def notifications_stream():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     uid = session['user_id']
+    print(f"User {uid} connected to SSE stream.")
     q = queue.Queue()
     user_event_queues[uid].append(q)
     def gen():
@@ -287,6 +317,7 @@ def notifications_stream():
             while True:
                 try:
                     msg = q.get(timeout=20)
+                    print(f"Sending message to user {uid}: {msg}")
                     yield f"data: {msg}\n\n"
                 except Exception:
                     # Heartbeat to keep connection alive
@@ -295,6 +326,7 @@ def notifications_stream():
             # Cleanup on disconnect
             try:
                 user_event_queues[uid].remove(q)
+                print(f"User {uid} disconnected from SSE stream.")
             except ValueError:
                 pass
     headers = {'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
@@ -428,7 +460,12 @@ def api_create_ticket():
         # Build ticket dict for notifications
         t = conn.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
         if t:
+            log_event(t['user_id'], f"Novo ticket criado: {t['subject']}", ticket_id)
             notify_user_ticket_update(t['user_id'], dict(t), 'created')
+            admins = conn.execute("SELECT id FROM users WHERE is_admin = 1").fetchall()
+            for admin in admins:
+                log_event(admin['id'], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
+                push_event(admin['id'], {'type': 'ticket_update', 'event': 'created', 'ticket': dict(t)})
     # If multipart/form-data (supports attachments)
     if request.content_type and 'multipart/form-data' in request.content_type:
         form = request.form
@@ -672,18 +709,23 @@ def api_admin_update_ticket_status(ticket_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
+    status = data.get('status')
     
     conn = get_db_connection()
     conn.execute('UPDATE tickets SET status = ?, updated_at = datetime("now") WHERE id = ?',
-                 (data['status'], ticket_id))
+                 (status, ticket_id))
     
-    if data['status'] in ['Resolvido', 'Fechado']:
+    if status in ['Resolvido', 'Fechado']:
         conn.execute('UPDATE tickets SET closed_at = datetime("now") WHERE id = ?', (ticket_id,))
     
     conn.commit()
     # Notify user about status change
     t = conn.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
     if t:
+        if status in ['Resolvido', 'Fechado']:
+            log_event(t['user_id'], f"Seu ticket #{ticket_id} foi concluído.", ticket_id)
+        else:
+            log_event(t['user_id'], f"O status do seu ticket #{ticket_id} foi alterado para {status}.", ticket_id)
         notify_user_ticket_update(t['user_id'], dict(t), 'status_changed')
     conn.close()
     
@@ -726,7 +768,7 @@ def api_create_ticket_response(ticket_id):
         return jsonify({'error': 'Message cannot be empty'}), 400
 
     conn = get_db_connection()
-    ticket = conn.execute('SELECT user_id FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
     if not ticket:
         conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
@@ -745,10 +787,13 @@ def api_create_ticket_response(ticket_id):
 
     # Notify the other party (user if admin responded, admin if user responded)
     if session.get('is_admin'):
+        log_event(ticket['user_id'], f"O suporte respondeu ao seu ticket #{ticket_id}.", ticket_id)
         notify_user_ticket_update(ticket['user_id'], dict(ticket), 'response_admin')
     else:
-        # This would ideally notify admins, but for simplicity, we'll assume admins check the dashboard
-        pass 
+        admins = conn.execute("SELECT id FROM users WHERE is_admin = 1").fetchall()
+        for admin in admins:
+            log_event(admin['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
+            push_event(admin['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': dict(ticket)})
 
     conn.close()
     return jsonify({'success': True, 'response_id': cur.lastrowid})

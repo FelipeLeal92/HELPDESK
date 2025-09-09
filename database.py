@@ -1,4 +1,4 @@
-#Database.py
+1#Database.py
 import sqlite3
 import hashlib
 
@@ -68,6 +68,17 @@ def init_database():
                   uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   FOREIGN KEY (ticket_id) REFERENCES tickets (id),
                   FOREIGN KEY (response_id) REFERENCES ticket_responses (id))''')
+
+    # Create logs table
+    c.execute('''CREATE TABLE IF NOT EXISTS logs
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  user_id INTEGER NOT NULL,
+                  ticket_id INTEGER,
+                  message TEXT NOT NULL,
+                  is_read INTEGER DEFAULT 0,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  FOREIGN KEY (user_id) REFERENCES users (id),
+                  FOREIGN KEY (ticket_id) REFERENCES tickets (id))''')
 
     # Insert default admin user
     try:

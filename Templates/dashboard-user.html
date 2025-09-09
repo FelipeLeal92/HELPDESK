@@ -93,9 +93,18 @@
           <div class="flex justify-between items-center">
             <h1 class="text-2xl font-bold" id="page-title">Dashboard</h1>
             <div class="flex items-center space-x-4">
-              <button class="p-2 rounded-full hover:bg-gray-100 transition-colors">
-                <span class="material-symbols-outlined">notifications</span>
-              </button>
+              <div class="relative">
+                <button id="notifications-button" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                  <span class="material-symbols-outlined">notifications</span>
+                  <span id="notifications-count" class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden"></span>
+                </button>
+                <div id="notifications-panel" class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg py-1 z-50 hidden">
+                  <div class="px-4 py-2 text-sm font-medium text-gray-700">Notificações</div>
+                  <div id="notifications-list" class="max-h-60 overflow-y-auto">
+                    <!-- As notificações serão inseridas aqui -->
+                  </div>
+                </div>
+              </div>
               <button class="p-2 rounded-full hover:bg-gray-100 transition-colors">
                 <span class="material-symbols-outlined">email</span>
               </button>
@@ -670,6 +679,99 @@
 <script src="/static/js/common.js"></script>
 <script src="/static/js/performance.js"></script>
 <script src="/static/js/user-dashboard.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const notificationsButton = document.getElementById('notifications-button');
+    const notificationsPanel = document.getElementById('notifications-panel');
+    const notificationsList = document.getElementById('notifications-list');
+    const notificationsCount = document.getElementById('notifications-count');
 
+    async function fetchNotifications() {
+      try {
+        const response = await fetch('/api/logs');
+        if (!response.ok) {
+          throw new Error('Failed to fetch notifications');
+        }
+        const logs = await response.json();
+        renderNotifications(logs);
+      } catch (error) {
+        console.error(error);
+        notificationsList.innerHTML = '<div class="px-4 py-2 text-sm text-gray-500">Erro ao carregar notificações.</div>';
+      }
+    }
+
+    function renderNotifications(logs) {
+      notificationsList.innerHTML = '';
+      if (logs.length === 0) {
+        notificationsList.innerHTML = '<div class="px-4 py-2 text-sm text-gray-500">Nenhuma notificação nova.</div>';
+        notificationsCount.classList.add('hidden');
+        return;
+      }
+
+      let unreadCount = 0;
+      logs.forEach(log => {
+        if (!log.is_read) {
+          unreadCount++;
+        }
+        const notificationElement = document.createElement('a');
+        notificationElement.href = `#`; // Pode levar ao ticket futuramente
+        notificationElement.className = `block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${log.is_read ? '' : 'font-bold'}`;
+        notificationElement.textContent = log.message;
+        notificationElement.dataset.logId = log.id;
+        notificationsList.appendChild(notificationElement);
+      });
+
+      if (unreadCount > 0) {
+        notificationsCount.textContent = unreadCount;
+        notificationsCount.classList.remove('hidden');
+      } else {
+        notificationsCount.classList.add('hidden');
+      }
+    }
+
+    async function markNotificationsAsRead() {
+      const unreadLogs = notificationsList.querySelectorAll('a[data-log-id]');
+      for (const log of unreadLogs) {
+        if (log.classList.contains('font-bold')) {
+          const logId = log.dataset.logId;
+          try {
+            await fetch(`/api/logs/${logId}/read`, { method: 'PUT' });
+            log.classList.remove('font-bold');
+          } catch (error) {
+            console.error(`Failed to mark log ${logId} as read`, error);
+          }
+        }
+      }
+      notificationsCount.classList.add('hidden');
+    }
+
+    notificationsButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = notificationsPanel.classList.toggle('hidden');
+      if (!isHidden) {
+        fetchNotifications();
+        markNotificationsAsRead();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!notificationsPanel.contains(event.target) && !notificationsButton.contains(event.target)) {
+        notificationsPanel.classList.add('hidden');
+      }
+    });
+
+    // Fetch notifications on page load
+    fetchNotifications();
+
+    // SSE for real-time updates
+    const eventSource = new EventSource("/api/notifications/stream");
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'ticket_update') {
+            fetchNotifications();
+        }
+    };
+  });
+</script>
 </body>
 </html>
