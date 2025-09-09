@@ -469,10 +469,10 @@ const AdminDashboard = (function() {
                     <p class="text-sm text-gray-500">${type.description || 'Sem descrição'}</p>
                 </div>
                 <div class="flex space-x-2">
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketType(${type.id}, '${type.name.replace(/'/g, "\\'")}', '${type.description ? type.description.replace(/'/g, "\\'") : ''}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketType(${type.id}, '${type.name.replace(/'/g, "'")}', '${type.description ? type.description.replace(/'/g, "'") : ''}')">
                         <span class="material-symbols-outlined text-blue-600">edit</span>
                     </button>
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketType(${type.id}, '${type.name.replace(/'/g, "\\'")}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketType(${type.id}, '${type.name.replace(/'/g, "'")}')">
                         <span class="material-symbols-outlined text-red-600">delete</span>
                     </button>
                 </div>
@@ -502,10 +502,10 @@ const AdminDashboard = (function() {
                     </div>
                 </div>
                 <div class="flex space-x-2">
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketStatus(${status.id}, '${status.name.replace(/'/g, "\\'")}', '${status.color}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketStatus(${status.id}, '${status.name.replace(/'/g, "'")}', '${status.color}')">
                         <span class="material-symbols-outlined text-blue-600">edit</span>
                     </button>
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketStatus(${status.id}, '${status.name.replace(/'/g, "\\'")}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketStatus(${status.id}, '${status.name.replace(/'/g, "'")}')">
                         <span class="material-symbols-outlined text-red-600">delete</span>
                     </button>
                 </div>
@@ -530,10 +530,10 @@ const AdminDashboard = (function() {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(user.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div class="flex space-x-2">
-                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="AdminDashboard.editUser(${user.id}, '${user.name.replace(/'/g, "\\'")}', '${user.email.replace(/'/g, "\\'")}', '${user.phone ? user.phone.replace(/'/g, "\\'") : ''}', ${user.is_admin})">
+                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="AdminDashboard.editUser(${user.id}, '${user.name.replace(/'/g, "'")}', '${user.email.replace(/'/g, "'")}', '${user.phone ? user.phone.replace(/'/g, "'") : ''}', ${user.is_admin})">
                             <span class="material-symbols-outlined text-blue-600">edit</span>
                         </button>
-                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Excluir" onclick="AdminDashboard.deleteUser(${user.id}, '${user.name.replace(/'/g, "\\'")}')">
+                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Excluir" onclick="AdminDashboard.deleteUser(${user.id}, '${user.name.replace(/'/g, "'")}')">
                             <span class="material-symbols-outlined text-red-600">delete</span>
                         </button>
                     </div>
@@ -772,8 +772,25 @@ const AdminDashboard = (function() {
     }
 
     function editUser(id, name, email, phone, isAdmin) {
-        // Implementation for editing user
-        Common.showToast('Funcionalidade de edição de usuário em desenvolvimento');
+        document.getElementById('user-modal-title').textContent = 'Editar Usuário';
+        document.getElementById('user-id').value = id;
+        document.getElementById('user-name').value = name;
+        document.getElementById('user-email').value = email;
+        document.getElementById('user-phone').value = phone;
+        document.getElementById('user-is-admin').checked = isAdmin;
+        document.getElementById('user-password').value = ''; // Clear password for security
+        Common.showModal('add-user-modal'); // Reusing the add-user-modal
+    }
+
+    function showAddUserModal() {
+        document.getElementById('user-modal-title').textContent = 'Adicionar Novo Usuário';
+        document.getElementById('user-id').value = ''; // Clear ID for new user
+        document.getElementById('user-name').value = '';
+        document.getElementById('user-email').value = '';
+        document.getElementById('user-password').value = '';
+        document.getElementById('user-phone').value = '';
+        document.getElementById('user-is-admin').checked = false;
+        Common.showModal('add-user-modal');
     }
 
     function deleteUser(id, name) {
@@ -891,7 +908,7 @@ const AdminDashboard = (function() {
 
     function initHelpCenterSettings() {
         const form = document.getElementById('help-center-settings-form');
-        if (!form) return;
+        if (!form) return; 
         if (form._bound) return; form._bound = true;
         let cfg = null;
         
@@ -998,9 +1015,7 @@ const AdminDashboard = (function() {
                 const data = await r.json().catch(() => null);
                 if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Falha ao salvar Central de Ajuda');
                 Common.showToast('Central de Ajuda salva');
-            } catch (err) {
-                Common.showToast(err.message || 'Falha ao salvar Central de Ajuda');
-            }
+            } catch (err) { Common.showToast(err.message || 'Falha ao salvar Central de Ajuda'); }
         });
         
         document.getElementById('btn-reset-help-center').addEventListener('click', async () => {
@@ -1011,9 +1026,7 @@ const AdminDashboard = (function() {
                 });
                 Common.showToast('Central de Ajuda restaurada');
                 window.location.reload();
-            } catch (err) {
-                Common.showToast(err.message || 'Falha ao restaurar');
-            }
+            } catch (err) { Common.showToast(err.message || 'Falha ao restaurar'); }
         });
         
         loadConfigAndRender();
@@ -1114,32 +1127,41 @@ const AdminDashboard = (function() {
             userForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 
-                const name = this.querySelector('input[type="text"]').value;
-                const email = this.querySelector('input[type="email"]').value;
-                const password = this.querySelector('input[type="password"]').value;
-                const phone = this.querySelectorAll('input')[3].value;
-                const isAdmin = this.querySelector('input[type="checkbox"]').checked;
+                const userId = document.getElementById('user-id').value;
+                const name = document.getElementById('user-name').value;
+                const email = document.getElementById('user-email').value;
+                const password = document.getElementById('user-password').value;
+                const phone = document.getElementById('user-phone').value;
+                const isAdmin = document.getElementById('user-is-admin').checked;
                 
-                fetch('/api/admin/users', {
-                    method: 'POST',
+                const url = userId ? `/api/admin/users/${userId}` : '/api/admin/users';
+                const method = userId ? 'PUT' : 'POST';
+                
+                const body = { name, email, phone, is_admin: isAdmin };
+                if (password) { // Only include password if it's provided (for new user or password change)
+                    body.password = password;
+                }
+
+                fetch(url, {
+                    method: method,
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ name, email, password, phone, is_admin: isAdmin })
+                    body: JSON.stringify(body)
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        Common.showToast('Usuário adicionado com sucesso');
+                        Common.showToast(userId ? 'Usuário atualizado com sucesso' : 'Usuário adicionado com sucesso');
                         Common.hideModal('add-user-modal');
                         loadUsers();
                     } else {
-                        Common.showToast(data.error || 'Erro ao adicionar usuário');
+                        Common.showToast(data.error || 'Erro ao salvar usuário');
                     }
                 })
                 .catch(error => {
-                    console.error('Error adding user:', error);
-                    Common.showToast('Erro ao adicionar usuário');
+                    console.error('Error saving user:', error);
+                    Common.showToast('Erro ao salvar usuário');
                 });
             });
         }
@@ -1544,7 +1566,8 @@ const AdminDashboard = (function() {
         deleteTicketStatus,
         editUser,
         deleteUser,
-        sortTable
+        sortTable,
+        showAddUserModal // Expose the function globally
     };
 })();
 

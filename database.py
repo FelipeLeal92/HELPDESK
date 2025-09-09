@@ -1,4 +1,4 @@
-11#Database.py
+#Database.py
 import sqlite3
 import hashlib
 
