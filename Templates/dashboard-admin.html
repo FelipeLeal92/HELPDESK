@@ -69,6 +69,11 @@
             <span class="material-symbols-outlined mr-3 text-xl">group</span>
             Usuários
           </a>
+          <a href="#" onclick="showSection('user-messages')" 
+             class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
+            <span class="material-symbols-outlined mr-3 text-xl">message</span>
+            Mensagens do Usuário
+          </a>
           <a href="#" onclick="showSection('settings')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">settings</span>
@@ -211,7 +216,7 @@
             <h3 class="text-lg font-medium">Chamados Recentes</h3>
             <div class="flex items-center space-x-2">
               <div class="relative">
-                <input type="text" placeholder="Buscar chamados..." 
+                <input id="admin-recent-search" type="text" placeholder="Buscar chamados..." 
                        class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 w-64"/>
                 <span class="material-symbols-outlined absolute left-3 top-2.5 text-gray-400">search</span>
               </div>
@@ -231,15 +236,29 @@
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead>
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assunto</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Solicitante</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Criado em</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
-                </tr>
+                  <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('id', 'recent')">
+                          ID <span id="sort-id-recent" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('subject', 'recent')">
+                          Assunto <span id="sort-subject-recent" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('user_name', 'recent')">
+                          Solicitante <span id="sort-user_name-recent" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('type', 'recent')">
+                          Tipo <span id="sort-type-recent" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('status', 'recent')">
+                          Status <span id="sort-status-recent" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('created_at', 'recent')">
+                          Criado em <span id="sort-created_at-recent" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Ações
+                      </th>
+                  </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200" id="recent-tickets-tbody">
                 <!-- Recent tickets will be loaded here -->
@@ -284,15 +303,29 @@
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead>
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assunto</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Solicitante</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prioridade</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Criado em</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
-                </tr>
+                  <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('id', 'open')">
+                          ID <span id="sort-id-open" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('subject', 'open')">
+                          Assunto <span id="sort-subject-open" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('user_name', 'open')">
+                          Solicitante <span id="sort-user_name-open" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('type', 'open')">
+                          Tipo <span id="sort-type-open" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('priority', 'open')">
+                          Prioridade <span id="sort-priority-open" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('created_at', 'open')">
+                          Criado em <span id="sort-created_at-open" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Ações
+                      </th>
+                  </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200" id="open-tickets-tbody">
                 <!-- Open tickets will be loaded here -->
@@ -330,15 +363,29 @@
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead>
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assunto</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Solicitante</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fechado em</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tempo Total</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
-                </tr>
+                  <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('id', 'closed')">
+                          ID <span id="sort-id-closed" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('subject', 'closed')">
+                          Assunto <span id="sort-subject-closed" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('user_name', 'closed')">
+                          Solicitante <span id="sort-user_name-closed" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('type', 'closed')">
+                          Tipo <span id="sort-type-closed" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('closed_at', 'closed')">
+                          Fechado em <span id="sort-closed_at-closed" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('duration', 'closed')">
+                          Tempo Total <span id="sort-duration-closed" class="text-xs">↕</span>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Ações
+                      </th>
+                  </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200" id="closed-tickets-tbody">
                 <!-- Closed tickets will be loaded here -->
@@ -407,6 +454,60 @@
               </thead>
               <tbody class="bg-white divide-y divide-gray-200" id="users-tbody">
                 <!-- Users will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+      <!-- User Messages Section -->
+      <main class="flex-1 overflow-y-auto bg-gray-50 p-6 hidden" id="user-messages-section">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <div class="flex justify-between items-center mb-6">
+            <div>
+              <h3 class="text-lg font-medium">Mensagens do Usuário</h3>
+              <p class="text-sm text-gray-500">Ticket ID: <span id="current-message-ticket-id" class="font-semibold">N/A</span></p>
+            </div>
+            <div class="flex items-center space-x-2">
+              <input type="text" id="user-message-search" placeholder="Buscar por ID do Chamado ou Usuário..." class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+          </div>
+          
+          <!-- Mensagens do usuário -->
+          <div class="mb-6">
+            <div class="flex justify-between items-center mb-4">
+              <div>
+                <h3 class="text-lg font-medium">Mensagens do Usuário</h3>
+                <p class="text-sm text-gray-500">Ticket ID: <span id="current-message-ticket-id" class="font-semibold">N/A</span></p>
+              </div>
+              <div class="flex items-center space-x-2">
+                <select id="message-ticket-select" class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500" aria-label="Selecionar ticket">
+                  <option value="">Selecione um ticket</option>
+                </select>
+              </div>
+            </div>
+            <form id="send-message-form" class="flex flex-col space-y-4" aria-label="Formulário de envio de mensagem">
+              <input type="hidden" id="message-ticket-id" name="ticket_id">
+              <textarea id="message-content" name="message" rows="3" 
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" 
+                        placeholder="Digite sua mensagem..." aria-required="true"></textarea>
+              <button type="submit" class="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors duration-200">
+                Enviar Mensagem
+              </button>
+            </form>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID do Chamado</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mensagem</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200" id="user-messages-tbody">
+                <!-- User messages will be loaded here -->
               </tbody>
             </table>
           </div>
@@ -601,20 +702,24 @@
   
   <!-- Modals -->
   <!-- Add User Modal -->
-  <div id="add-user-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+  <div id="add-user-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" 
+      role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="bg-white rounded-lg p-6 w-full max-w-md">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-medium">Adicionar Usuário</h3>
-        <button onclick="hideModal('add-user-modal')" class="text-gray-400 hover:text-gray-600">
+        <h3 class="text-lg font-medium" id="modal-title">Adicionar Usuário</h3>
+        <button onclick="hideModal('add-user-modal')" class="text-gray-400 hover:text-gray-600" 
+                aria-label="Fechar modal" tabindex="0">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
-      
-      <form id="add-user-form" class="space-y-4">
+
+      <form id="add-user-form" class="space-y-4" role="form" aria-label="Adicionar usuário">
         <div>
-          <label class="block text-gray-700 mb-2">Nome</label>
-          <input type="text" required 
-                 class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <label for="add-user-name" class="block text-gray-700 mb-2">Nome</label>
+          <input type="text" id="add-user-name" required 
+                class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-required="true" aria-describedby="name-description">
+          <p id="name-description" class="text-sm text-gray-500 mt-1">Digite o nome completo do usuário</p>
         </div>
         
         <div>
@@ -850,1380 +955,9 @@
     </div>
   </div>
 
-  <script>
-    // Global variables
-    let allTickets = [];
-    let ticketTypes = [];
-    let ticketStatuses = [];
-    let recentTickets = [];
-    let openTickets = [];
-    let closedTickets = [];
-    
-    // Navigation functions
-    function showSection(sectionName) {
-      // Hide all sections
-      const sections = ['dashboard', 'open-tickets', 'closed-tickets', 'ticket-types', 'users', 'settings'];
-      sections.forEach(section => {
-        const sectionElement = document.getElementById(section + '-section');
-        if (sectionElement) {
-          sectionElement.classList.add('hidden');
-        } else {
-          console.error(`Seção não encontrada: ${section}-section`);
-        }
-      });
-      
-      // Show selected section
-      const selectedSection = document.getElementById(sectionName + '-section');
-      if (selectedSection) {
-        selectedSection.classList.remove('hidden');
-      } else {
-        console.error(`Seção selecionada não encontrada: ${sectionName}-section`);
-      }
-      
-      // Update page title
-      const titles = {
-        'dashboard': 'Painel Administrativo',
-        'open-tickets': 'Chamados Abertos',
-        'closed-tickets': 'Chamados Fechados',
-        'ticket-types': 'Tipos de Chamados',
-        'users': 'Gerenciar Usuários',
-        'settings': 'Configurações'
-      };
-      document.getElementById('page-title').textContent = titles[sectionName];
-      
-      // Update navigation
-      document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.remove('bg-primary-50', 'text-primary-700');
-        link.classList.add('text-gray-700', 'hover:bg-gray-100');
-      });
-      
-      const currentLink = document.querySelector(`.nav-link[onclick="showSection('${sectionName}')"]`);
-      if (currentLink) {
-        currentLink.classList.add('bg-primary-50', 'text-primary-700');
-        currentLink.classList.remove('text-gray-700', 'hover:bg-gray-100');
-      }
-      
-      // Load section-specific data
-      if (sectionName === 'dashboard') {
-        loadDashboardData();
-      } else if (sectionName === 'open-tickets') {
-        loadOpenTickets();
-      } else if (sectionName === 'closed-tickets') {
-        loadClosedTickets();
-      } else if (sectionName === 'ticket-types') {
-        loadTicketTypes();
-      } else if (sectionName === 'users') {
-        loadUsers();
-      } else if (sectionName === 'settings') {
-        bindAdminSettingsHandlers();
-        initHelpCenterSettings();
-      }
-    }
-    
-    // Modal functions
-    function showAddUserModal() {
-      document.getElementById('add-user-modal').classList.remove('hidden');
-      document.getElementById('add-user-modal').classList.add('flex');
-    }
-    
-    function showAddTypeModal() {
-      document.getElementById('type-modal-title').textContent = 'Adicionar Tipo de Chamado';
-      document.getElementById('type-id').value = '';
-      document.getElementById('type-name').value = '';
-      document.getElementById('type-description').value = '';
-      document.getElementById('type-modal').classList.remove('hidden');
-      document.getElementById('type-modal').classList.add('flex');
-    }
-    
-    function showAddStatusModal() {
-      document.getElementById('status-modal-title').textContent = 'Adicionar Status de Chamado';
-      document.getElementById('status-id').value = '';
-      document.getElementById('status-name').value = '';
-      document.getElementById('status-color').value = '#808080';
-      document.getElementById('status-modal').classList.remove('hidden');
-      document.getElementById('status-modal').classList.add('flex');
-    }
-    
-    function showModal(modalId) {
-      document.getElementById(modalId).classList.remove('hidden');
-      document.getElementById(modalId).classList.add('flex');
-    }
-    
-    function hideModal(modalId) {
-      document.getElementById(modalId).classList.add('hidden');
-      document.getElementById(modalId).classList.remove('flex');
-    }
-    
-    // Data loading functions
-    function loadDashboardData() {
-      fetch('/api/admin/stats')
-        .then(response => response.json())
-        .then(data => {
-          document.getElementById('total-tickets-admin').textContent = data.total || 0;
-          document.getElementById('open-tickets-admin').textContent = data.open || 0;
-          document.getElementById('resolved-tickets-admin').textContent = data.resolved || 0;
-        })
-        .catch(error => console.error('Error loading dashboard data:', error));
-      
-      loadRecentTickets();
-    }
-    
-    // As variáveis globais já foram declaradas no início do script
-    
-    function loadRecentTickets() {
-      fetch('/api/admin/tickets/recent')
-        .then(response => response.json())
-        .then(tickets => {
-          recentTickets = tickets; // Armazena os tickets para ordenação posterior
-          renderRecentTickets(tickets);
-        })
-        .catch(error => console.error('Error loading recent tickets:', error));
-    }
-    
-    function renderRecentTickets(tickets) {
-      const tbody = document.getElementById('recent-tickets-tbody');
-      tbody.innerHTML = tickets.map(ticket => `
-        <tr class="hover:bg-gray-50 transition-all">
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || ticket.description.substring(0, 50) + '...'}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            <div class="flex items-center">
-              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
-                ${ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U'}
-              </div>
-              <span class="ml-2">${ticket.user_name || 'Usuário'}</span>
-            </div>
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            <span class="px-2 py-1 text-xs rounded-full ${getStatusColor(ticket.status)}">${ticket.status}</span>
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${new Date(ticket.created_at).toLocaleDateString('pt-BR')}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-            <div class="flex space-x-2">
-              <button class="reply-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Responder" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-blue-600">reply</span>
-              </button>
-              <button class="admin-view-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver detalhes" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-gray-600">visibility</span>
-              </button>
-              <button class="view-attachments-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver anexos" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-gray-600">attach_file</span>
-              </button>
-              <button class="close-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Finalizar" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-green-600">check_circle</span>
-              </button>
-            </div>
-          </td>
-        </tr>
-      `).join('');
-      
-      // Add event listeners for buttons
-      addTicketActionEventListeners();
-    }
-    
-    function addTicketActionEventListeners() {
-      // View ticket details
-      document.querySelectorAll('.admin-view-ticket-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          fetch(`/api/tickets/${ticketId}`)
-            .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar detalhes'))
-            .then(ticket => openAdminTicketModal(ticket))
-            .catch(err => alert(err.message));
-        });
-      });
-      
-      // Reply to ticket
-      document.querySelectorAll('.reply-ticket-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          document.getElementById('reply-ticket-id').textContent = ticketId;
-          document.getElementById('reply-ticket-id-input').value = ticketId;
-          document.getElementById('reply-message').value = '';
-          showModal('reply-ticket-modal');
-        });
-      });
-      
-      // View attachments
-      document.querySelectorAll('.view-attachments-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          document.getElementById('attachments-ticket-id').textContent = ticketId;
-          document.getElementById('attachments-list').innerHTML = '<p class="text-gray-500 text-center py-4">Carregando anexos...</p>';
-          showModal('attachments-modal');
-          
-          // Fetch attachments
-          fetch(`/api/tickets/${ticketId}/attachments`)
-            .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar anexos'))
-            .then(attachments => {
-              if (attachments.length === 0) {
-                document.getElementById('attachments-list').innerHTML = 
-                  '<p class="text-gray-500 text-center py-4">Nenhum anexo encontrado para este chamado.</p>';
-                return;
-              }
-              
-              const attachmentsList = attachments.map(attachment => `
-                <div class="flex items-center justify-between p-3 border rounded-lg">
-                  <div class="flex items-center">
-                    <span class="material-symbols-outlined text-gray-500 mr-2">description</span>
-                    <span>${attachment.filename}</span>
-                  </div>
-                  <a href="/uploads/${attachment.path}" download class="p-1.5 rounded-full hover:bg-gray-100 transition-all">
-                    <span class="material-symbols-outlined text-primary-600">download</span>
-                  </a>
-                </div>
-              `).join('');
-              
-              document.getElementById('attachments-list').innerHTML = attachmentsList;
-            })
-            .catch(error => {
-              console.error('Error loading attachments:', error);
-              document.getElementById('attachments-list').innerHTML = 
-                '<p class="text-red-500 text-center py-4">Erro ao carregar anexos. Tente novamente.</p>';
-            });
-        });
-      });
-      
-      // Close ticket
-      document.querySelectorAll('.close-ticket-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          document.getElementById('close-ticket-id').textContent = ticketId;
-          document.getElementById('close-ticket-id-input').value = ticketId;
-          document.getElementById('close-ticket-note').value = '';
-          showModal('close-ticket-modal');
-        });
-      });
-    }
-    
-    function sortRecentTickets() {
-      const sortOrder = document.getElementById('dashboard-sort-order').value;
-      let sortedTickets = [...recentTickets];
-      
-      switch(sortOrder) {
-        case 'newest':
-          sortedTickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-          break;
-        case 'oldest':
-          sortedTickets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          break;
-        case 'priority':
-          const priorityOrder = {'Alta': 3, 'Média': 2, 'Baixa': 1};
-          sortedTickets.sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
-          break;
-        case 'type':
-          sortedTickets.sort((a, b) => a.type.localeCompare(b.type));
-          break;
-        case 'status':
-          sortedTickets.sort((a, b) => a.status.localeCompare(b.status));
-          break;
-      }
-      
-      renderRecentTickets(sortedTickets);
-    }
-    
-    function loadOpenTickets() {
-      fetch('/api/tickets')
-        .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar tickets'))
-        .then(tickets => {
-          allTickets = tickets;
-          // Filter only open tickets
-          openTickets = tickets.filter(t => ['Aberto', 'Em Andamento', 'Pendente'].includes(t.status));
-          updateOpenTicketsTable(openTickets);
-          populateTicketTypeFilters();
-        })
-        .catch(error => console.error('Error loading open tickets:', error));
-    }
-    
-    function sortOpenTickets() {
-      const sortOrder = document.getElementById('open-tickets-sort-order').value;
-      let sortedTickets = [...openTickets];
-      
-      switch(sortOrder) {
-        case 'newest':
-          sortedTickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-          break;
-        case 'oldest':
-          sortedTickets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          break;
-        case 'priority':
-          const priorityOrder = {'Alta': 3, 'Média': 2, 'Baixa': 1};
-          sortedTickets.sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
-          break;
-        case 'type':
-          sortedTickets.sort((a, b) => a.type.localeCompare(b.type));
-          break;
-        case 'status':
-          sortedTickets.sort((a, b) => a.status.localeCompare(b.status));
-          break;
-      }
-      
-      updateOpenTicketsTable(sortedTickets);
-    }
-    
-    function updateOpenTicketsTable(tickets) {
-      const tbody = document.getElementById('open-tickets-tbody');
-      if (!tbody) return;
-      
-      if (tickets.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="7" class="px-6 py-4 text-center text-gray-500">
-              Nenhum chamado aberto encontrado
-            </td>
-          </tr>
-        `;
-        return;
-      }
-      
-      tbody.innerHTML = tickets.map(ticket => `
-        <tr class="hover:bg-gray-50 transition-all">
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || ticket.description.substring(0, 50) + '...'}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            <div class="flex items-center">
-              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
-                ${ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U'}
-              </div>
-              <span class="ml-2">${ticket.user_name || 'Usuário'}</span>
-            </div>
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            <span class="px-2 py-1 text-xs rounded-full ${getPriorityColor(ticket.priority)}">${ticket.priority}</span>
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${new Date(ticket.created_at).toLocaleDateString('pt-BR')}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-            <div class="flex space-x-2">
-              <button class="admin-view-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver detalhes" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-gray-600">visibility</span>
-              </button>
-              <button class="assign-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Atribuir" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-blue-600">person_add</span>
-              </button>
-              <button class="open-ticket-close-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Finalizar" data-ticket-id="${ticket.id}">
-                <span class="material-symbols-outlined text-green-600">check_circle</span>
-              </button>
-            </div>
-          </td>
-        </tr>
-      `).join('');
-      
-      // Add event listeners for buttons
-      addOpenTicketsEventListeners();
-    }
-    
-    function addOpenTicketsEventListeners() {
-      // View ticket details
-      document.querySelectorAll('.admin-view-ticket-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          fetch(`/api/tickets/${ticketId}`)
-            .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar detalhes'))
-            .then(ticket => openAdminTicketModal(ticket))
-            .catch(err => alert(err.message));
-        });
-      });
-      
-      // Assign ticket to admin
-      document.querySelectorAll('.assign-ticket-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          document.getElementById('assign-ticket-id').textContent = ticketId;
-          document.getElementById('assign-ticket-id-input').value = ticketId;
-          
-          // Load administrators for the select dropdown
-          loadAdministrators();
-          
-          showModal('assign-ticket-modal');
-        });
-      });
-      
-      // Close ticket
-      document.querySelectorAll('.open-ticket-close-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          document.getElementById('close-ticket-id').textContent = ticketId;
-          document.getElementById('close-ticket-id-input').value = ticketId;
-          document.getElementById('close-ticket-note').value = '';
-          showModal('close-ticket-modal');
-        });
-      });
-    }
-    
-    function loadClosedTickets() {
-      fetch('/api/tickets')
-        .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar tickets'))
-        .then(tickets => {
-          // Filter only closed tickets
-          closedTickets = tickets.filter(t => ['Resolvido', 'Fechado'].includes(t.status));
-          updateClosedTicketsTable(closedTickets);
-        })
-        .catch(error => console.error('Error loading closed tickets:', error));
-    }
-    
-    function sortClosedTickets() {
-      const sortOrder = document.getElementById('closed-tickets-sort-order').value;
-      let sortedTickets = [...closedTickets];
-      
-      switch(sortOrder) {
-        case 'newest':
-          sortedTickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-          break;
-        case 'oldest':
-          sortedTickets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          break;
-        case 'priority':
-          const priorityOrder = {'Alta': 3, 'Média': 2, 'Baixa': 1};
-          sortedTickets.sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
-          break;
-        case 'type':
-          sortedTickets.sort((a, b) => a.type.localeCompare(b.type));
-          break;
-        case 'closed_date':
-          sortedTickets.sort((a, b) => new Date(b.closed_at || b.updated_at) - new Date(a.closed_at || a.updated_at));
-          break;
-      }
-      
-      updateClosedTicketsTable(sortedTickets);
-    }
-    
-    function updateClosedTicketsTable(tickets) {
-      const tbody = document.getElementById('closed-tickets-tbody');
-      if (!tbody) return;
-      
-      if (tickets.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="7" class="px-6 py-4 text-center text-gray-500">
-              Nenhum chamado fechado encontrado
-            </td>
-          </tr>
-        `;
-        return;
-      }
-      
-      tbody.innerHTML = tickets.map(ticket => {
-        // Calculate time difference
-        const created = new Date(ticket.created_at);
-        const closed = ticket.closed_at ? new Date(ticket.closed_at) : new Date();
-        const diffTime = Math.abs(closed - created);
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        
-        return `
-          <tr class="hover:bg-gray-50 transition-all">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || ticket.description.substring(0, 50) + '...'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-              <div class="flex items-center">
-                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
-                  ${ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U'}
-                </div>
-                <span class="ml-2">${ticket.user_name || 'Usuário'}</span>
-              </div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-              <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.closed_at ? new Date(ticket.closed_at).toLocaleDateString('pt-BR') : 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${diffDays}d ${diffHours}h</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-              <div class="flex space-x-2">
-                <button class="admin-view-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver detalhes" data-ticket-id="${ticket.id}">
-                  <span class="material-symbols-outlined text-gray-600">visibility</span>
-                </button>
-                <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Reabrir" data-ticket-id="${ticket.id}">
-                  <span class="material-symbols-outlined text-blue-600">refresh</span>
-                </button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
-      
-      // Add event listeners for view buttons
-      document.querySelectorAll('.admin-view-ticket-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const ticketId = this.getAttribute('data-ticket-id');
-          fetch(`/api/tickets/${ticketId}`)
-            .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar detalhes'))
-            .then(ticket => openAdminTicketModal(ticket))
-            .catch(err => alert(err.message));
-        });
-      });
-    }
-    
-    function loadTicketTypes() {
-      Promise.all([
-        fetch('/api/ticket-types').then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar tipos de chamados')),
-        fetch('/api/ticket-statuses').then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar status de chamados'))
-      ])
-      .then(([types, statuses]) => {
-        ticketTypes = types;
-        ticketStatuses = statuses;
-        updateTicketTypesList(types);
-        updateTicketStatusesList(statuses);
-      })
-      .catch(error => console.error('Error loading ticket types/statuses:', error));
-    }
-    
-    function updateTicketTypesList(types) {
-      const container = document.getElementById('ticket-types-list');
-      if (!container) return;
-      
-      if (types.length === 0) {
-        container.innerHTML = `
-          <div class="text-center py-8 text-gray-500">
-            Nenhum tipo de chamado encontrado
-          </div>
-        `;
-        return;
-      }
-      
-      container.innerHTML = types.map(type => `
-        <div class="border rounded-lg p-4 flex justify-between items-center">
-          <div>
-            <h4 class="font-medium">${type.name}</h4>
-            <p class="text-sm text-gray-500">${type.description || 'Sem descrição'}</p>
-          </div>
-          <div class="flex space-x-2">
-            <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="editTicketType(${type.id}, '${type.name.replace(/'/g, "\\'")}', '${type.description ? type.description.replace(/'/g, "\\'") : ''}')">
-              <span class="material-symbols-outlined text-blue-600">edit</span>
-            </button>
-            <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="deleteTicketType(${type.id}, '${type.name.replace(/'/g, "\\'")}')">
-              <span class="material-symbols-outlined text-red-600">delete</span>
-            </button>
-          </div>
-        </div>
-      `).join('');
-    }
-    
-    function updateTicketStatusesList(statuses) {
-      const container = document.getElementById('ticket-statuses-list');
-      if (!container) return;
-      
-      if (statuses.length === 0) {
-        container.innerHTML = `
-          <div class="text-center py-8 text-gray-500">
-            Nenhum status de chamado encontrado
-          </div>
-        `;
-        return;
-      }
-      
-      container.innerHTML = statuses.map(status => `
-        <div class="border rounded-lg p-4 flex justify-between items-center">
-          <div class="flex items-center">
-            <span class="w-3 h-3 rounded-full mr-3" style="background-color: ${status.color}"></span>
-            <div>
-              <h4 class="font-medium">${status.name}</h4>
-            </div>
-          </div>
-          <div class="flex space-x-2">
-            <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="editTicketStatus(${status.id}, '${status.name.replace(/'/g, "\\'")}', '${status.color}')">
-              <span class="material-symbols-outlined text-blue-600">edit</span>
-            </button>
-            <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="deleteTicketStatus(${status.id}, '${status.name.replace(/'/g, "\\'")}')">
-              <span class="material-symbols-outlined text-red-600">delete</span>
-            </button>
-          </div>
-        </div>
-      `).join('');
-    }
-    
-    function loadUsers() {
-      fetch('/api/admin/users')
-        .then(response => response.json())
-        .then(users => {
-          const tbody = document.getElementById('users-tbody');
-          tbody.innerHTML = users.map(user => `
-            <tr class="hover:bg-gray-50 transition-all">
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.name}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.email}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.phone || '-'}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                <span class="px-2 py-1 text-xs rounded-full ${user.is_admin ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">
-                  ${user.is_admin ? 'Administrador' : 'Usuário'}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${new Date(user.created_at).toLocaleDateString('pt-BR')}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <div class="flex space-x-2">
-                  <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="editUser(${user.id}, '${user.name.replace(/'/g, "\\'")}', '${user.email.replace(/'/g, "\\'")}', '${user.phone ? user.phone.replace(/'/g, "\\'") : ''}', ${user.is_admin})">
-                    <span class="material-symbols-outlined text-blue-600">edit</span>
-                  </button>
-                  <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Excluir" onclick="deleteUser(${user.id}, '${user.name.replace(/'/g, "\\'")}')">
-                    <span class="material-symbols-outlined text-red-600">delete</span>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          `).join('');
-        })
-        .catch(error => console.error('Error loading users:', error));
-    }
-    
-    function populateTicketTypeFilters() {
-      const typeFilter = document.getElementById('open-tickets-type-filter');
-      if (!typeFilter) return;
-      
-      // Get unique ticket types
-      const uniqueTypes = [...new Set(allTickets.map(ticket => ticket.type))];
-      
-      typeFilter.innerHTML = '<option value="">Todos os tipos</option>';
-      uniqueTypes.forEach(type => {
-        typeFilter.innerHTML += `<option value="${type}">${type}</option>`;
-      });
-    }
-    
-    // Ticket type management functions
-    function editTicketType(id, name, description) {
-      document.getElementById('type-modal-title').textContent = 'Editar Tipo de Chamado';
-      document.getElementById('type-id').value = id;
-      document.getElementById('type-name').value = name;
-      document.getElementById('type-description').value = description;
-      document.getElementById('type-modal').classList.remove('hidden');
-      document.getElementById('type-modal').classList.add('flex');
-    }
-    
-    function deleteTicketType(id, name) {
-      if (confirm(`Tem certeza que deseja excluir o tipo de chamado "${name}"?`)) {
-        fetch(`/api/ticket-types/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            showToast('Tipo de chamado excluído com sucesso');
-            loadTicketTypes();
-          } else {
-            alert('Erro ao excluir tipo de chamado');
-          }
-        })
-        .catch(error => {
-          console.error('Error deleting ticket type:', error);
-          alert('Erro ao excluir tipo de chamado');
-        });
-      }
-    }
-    
-    // Ticket status management functions
-    function editTicketStatus(id, name, color) {
-      document.getElementById('status-modal-title').textContent = 'Editar Status de Chamado';
-      document.getElementById('status-id').value = id;
-      document.getElementById('status-name').value = name;
-      document.getElementById('status-color').value = color;
-      document.getElementById('status-modal').classList.remove('hidden');
-      document.getElementById('status-modal').classList.add('flex');
-    }
-    
-    function deleteTicketStatus(id, name) {
-      if (confirm(`Tem certeza que deseja excluir o status de chamado "${name}"?`)) {
-        fetch(`/api/ticket-statuses/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            showToast('Status de chamado excluído com sucesso');
-            loadTicketTypes();
-          } else {
-            alert('Erro ao excluir status de chamado');
-          }
-        })
-        .catch(error => {
-          console.error('Error deleting ticket status:', error);
-          alert('Erro ao excluir status de chamado');
-        });
-      }
-    }
-    
-    // User management functions
-    function editUser(id, name, email, phone, isAdmin) {
-      // Implementation for editing user
-      showToast('Funcionalidade de edição de usuário em desenvolvimento');
-    }
-    
-    function deleteUser(id, name) {
-      if (confirm(`Tem certeza que deseja excluir o usuário "${name}"?`)) {
-        fetch(`/api/admin/users/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            showToast('Usuário excluído com sucesso');
-            loadUsers();
-          } else {
-            alert('Erro ao excluir usuário');
-          }
-        })
-        .catch(error => {
-          console.error('Error deleting user:', error);
-          alert('Erro ao excluir usuário');
-        });
-      }
-    }
-    
-    // Helper functions
-    function getStatusColor(status) {
-      const colors = {
-        'Aberto': 'bg-blue-100 text-blue-800',
-        'Em Andamento': 'bg-yellow-100 text-yellow-800',
-        'Pendente': 'bg-orange-100 text-orange-800',
-        'Resolvido': 'bg-green-100 text-green-800',
-        'Fechado': 'bg-gray-100 text-gray-800'
-      };
-      return colors[status] || 'bg-gray-100 text-gray-800';
-    }
-    
-    function getPriorityColor(priority) {
-      const colors = {
-        'Baixa': 'bg-green-100 text-green-800',
-        'Média': 'bg-yellow-100 text-yellow-800',
-        'Alta': 'bg-orange-100 text-orange-800',
-        'Urgente': 'bg-red-100 text-red-800'
-      };
-      return colors[priority] || 'bg-gray-100 text-gray-800';
-    }
-    
-    function showToast(msg) {
-      const t = document.createElement('div');
-      t.className = 'fixed bottom-4 right-4 bg-black text-white px-4 py-2 rounded shadow z-50';
-      t.textContent = msg;
-      document.body.appendChild(t);
-      setTimeout(() => t.remove(), 4000);
-    }
-    
-    // Admin ticket details modal logic
-    function getAdminModalElements() {
-      return {
-        modal: document.getElementById('admin-ticket-modal'),
-        modalBody: document.getElementById('admin-ticket-modal-body'),
-        closeBtn: document.getElementById('admin-close-ticket-modal')
-      };
-    }
-    
-    function openAdminTicketModal(ticket) {
-      const { modal, modalBody } = getAdminModalElements();
-      if (!modal || !modalBody) return;
-      
-      const subject = ticket.subject || '(Sem assunto)';
-      const attachments = (ticket.attachments || [])
-        .map(a => `<li class="flex items-center justify-between"><a class="text-primary-600 hover:underline" href="${a.url}" target="_blank">${a.filename}</a><span class="text-xs text-gray-500">${(a.filesize/1024).toFixed(1)} KB</span></li>`)
-        .join('') || '<li class="text-gray-500">Nenhum anexo</li>';
-      
-      modalBody.innerHTML = `
-        <div class="grid grid-cols-2 gap-2">
-          <div><span class="font-semibold">ID:</span> #${ticket.id}</div>
-          <div><span class="font-semibold">Status:</span> ${ticket.status}</div>
-          <div><span class="font-semibold">Tipo:</span> ${ticket.type}</div>
-          <div><span class="font-semibold">Classificação:</span> ${ticket.priority}</div>
-          <div class="col-span-2"><span class="font-semibold">Assunto:</span> ${subject}</div>
-          <div class="col-span-2"><span class="font-semibold">Descrição:</span><p class="mt-1 whitespace-pre-line">${ticket.description}</p></div>
-          <div class="col-span-2"><span class="font-semibold">Anexos:</span><ul class="mt-1 space-y-1">${attachments}</ul></div>
-        </div>
-      `;
-      modal.classList.remove('hidden');
-    }
-    
-    // ===== Help Center Settings (persist via API) =====
-    async function apiGetHelpCenter() {
-      const r = await fetch('/api/help-center');
-      if (!r.ok) throw new Error('Falha ao carregar Central de Ajuda');
-      return r.json();
-    }
-    
-    async function apiSaveHelpCenter(cfg) {
-      const r = await fetch('/api/help-center', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
-      });
-      const data = await r.json().catch(() => null);
-      if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Falha ao salvar Central de Ajuda');
-      return data;
-    }
-    
-    function initHelpCenterSettings() {
-      const form = document.getElementById('help-center-settings-form');
-      if (!form) return;
-      if (form._bound) return; form._bound = true;
-      let cfg = null;
-      
-      // Top cards
-      const topContainer = document.getElementById('top-cards-container');
-      const tmplTop = document.getElementById('tmpl-top-card-fieldset');
-      
-      function renderTopCards() {
-        topContainer.innerHTML = '';
-        cfg.topCards.forEach((card, idx) => {
-          const wrap = document.createElement('div');
-          const node = tmplTop.content.cloneNode(true);
-          wrap.appendChild(node);
-          const fs = wrap.querySelector('fieldset');
-          const inputs = fs.querySelectorAll('input');
-          inputs[0].value = card.title;
-          inputs[1].value = card.desc;
-          inputs[2].value = card.icon;
-          inputs[0].addEventListener('input', e => cfg.topCards[idx].title = e.target.value);
-          inputs[1].addEventListener('input', e => cfg.topCards[idx].desc = e.target.value);
-          inputs[2].addEventListener('input', e => cfg.topCards[idx].icon = e.target.value);
-          fs.querySelector('.btn-remove-top-card').addEventListener('click', () => { cfg.topCards.splice(idx, 1); renderTopCards(); });
-          topContainer.appendChild(wrap);
-        });
-      }
-      
-      document.getElementById('btn-add-top-card').addEventListener('click', () => {
-        cfg.topCards.push({ title: 'Novo Card', desc: 'Descrição', icon: 'help' });
-        renderTopCards();
-      });
-      
-      // FAQ
-      const faqContainer = document.getElementById('faq-items-container');
-      const tmplFaq = document.getElementById('tmpl-faq-item');
-      
-      function renderFaq() {
-        faqContainer.innerHTML = '';
-        cfg.faq.forEach((item, idx) => {
-          const wrap = document.createElement('div');
-          const node = tmplFaq.content.cloneNode(true);
-          wrap.appendChild(node);
-          const qInput = wrap.querySelector('input');
-          const aInput = wrap.querySelector('textarea');
-          qInput.value = item.q;
-          aInput.value = item.a;
-          qInput.addEventListener('input', e => cfg.faq[idx].q = e.target.value);
-          aInput.addEventListener('input', e => cfg.faq[idx].a = e.target.value);
-          wrap.querySelector('.btn-remove-faq').addEventListener('click', () => { cfg.faq.splice(idx, 1); renderFaq(); });
-          faqContainer.appendChild(wrap);
-        });
-      }
-      
-      document.getElementById('btn-add-faq').addEventListener('click', () => {
-        cfg.faq.push({ q: 'Nova pergunta', a: 'Resposta' });
-        renderFaq();
-      });
-      
-      // Contacts
-      const contactsContainer = document.getElementById('contact-items-container');
-      const tmplContact = document.getElementById('tmpl-contact-item');
-      
-      function renderContacts() {
-        contactsContainer.innerHTML = '';
-        cfg.contacts.forEach((c, idx) => {
-          const wrap = document.createElement('div');
-          const node = tmplContact.content.cloneNode(true);
-          wrap.appendChild(node);
-          const inputs = wrap.querySelectorAll('input');
-          inputs[0].value = c.name;
-          inputs[1].value = c.number;
-          inputs[0].addEventListener('input', e => cfg.contacts[idx].name = e.target.value);
-          inputs[1].addEventListener('input', e => cfg.contacts[idx].number = e.target.value);
-          wrap.querySelector('.btn-remove-contact').addEventListener('click', () => { cfg.contacts.splice(idx, 1); renderContacts(); });
-          contactsContainer.appendChild(wrap);
-        });
-      }
-      
-      async function loadConfigAndRender() {
-        try {
-          cfg = await apiGetHelpCenter();
-        } catch (err) {
-          alert(err.message || 'Falha ao carregar Central de Ajuda');
-          cfg = { topCards: [], faq: [], contacts: [] };
-        }
-        renderTopCards();
-        renderFaq();
-        renderContacts();
-      }
-      
-      document.getElementById('btn-add-contact').addEventListener('click', () => {
-        cfg.contacts.push({ name: 'Novo Contato', number: '5599999999999' });
-        renderContacts();
-      });
-      
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        try {
-          await apiSaveHelpCenter(cfg);
-          showToast('Central de Ajuda salva');
-        } catch (err) {
-          alert(err.message || 'Falha ao salvar Central de Ajuda');
-        }
-      });
-      
-      document.getElementById('btn-reset-help-center').addEventListener('click', async () => {
-        try {
-          await apiSaveHelpCenter({ topCards: [], faq: [], contacts: [] });
-          showToast('Central de Ajuda restaurada');
-          window.location.reload();
-        } catch (err) {
-          alert(err.message || 'Falha ao restaurar');
-        }
-      });
-      
-      loadConfigAndRender();
-    }
-    
-    function bindAdminSettingsHandlers() {
-      const btn = document.getElementById('btn-admin-change-password');
-      if (!btn) return;
-      if (btn._bound) return; // prevent multiple binds
-      btn._bound = true;
-      
-      btn.addEventListener('click', async () => {
-        const current_password = document.getElementById('admin-current-password').value;
-        const new_password = document.getElementById('admin-new-password').value;
-        const confirm_password = document.getElementById('admin-confirm-password').value;
-        
-        try {
-          const r = await fetch('/api/user/settings/security', {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ current_password, new_password, confirm_password })
-          });
-          const data = await r.json().catch(() => null);
-          if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao alterar senha.');
-          showToast('Senha do administrador alterada com sucesso');
-          document.getElementById('admin-current-password').value = '';
-          document.getElementById('admin-new-password').value = '';
-          document.getElementById('admin-confirm-password').value = '';
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      
-      // load settings values whenever admin opens the tab
-      loadAdminSettings();
-    }
-    
-    async function loadAdminSettings() {
-      try {
-        const r = await fetch('/api/admin/settings');
-        if (!r.ok) return;
-        const s = await r.json();
-        document.getElementById('company-name').value = s.company_name || '';
-        document.getElementById('support-email').value = s.support_email || '';
-        document.getElementById('support-phone').value = s.support_phone || '';
-      } catch (e) { console.error(e); }
-    }
-    
-    (function bindAdminSettingsForm(){
-      const form = document.getElementById('admin-settings-form');
-      if (!form) return;
-      if (form._bound) return; form._bound = true;
-      
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const company_name = document.getElementById('company-name').value.trim();
-        const support_email = document.getElementById('support-email').value.trim();
-        const support_phone = document.getElementById('support-phone').value.trim();
-        
-        try {
-          const r = await fetch('/api/admin/settings', {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ company_name, support_email, support_phone })
-          });
-          const data = await r.json().catch(() => null);
-          if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao salvar configurações.');
-          showToast('Configurações salvas');
-        } catch (err) { alert(err.message); }
-      });
-    })();
-    
-    // Form submission handlers
-    document.addEventListener('DOMContentLoaded', function() {
-      // Ticket type form
-      const typeForm = document.getElementById('ticket-type-form');
-      if (typeForm) {
-        typeForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          
-          const id = document.getElementById('type-id').value;
-          const name = document.getElementById('type-name').value;
-          const description = document.getElementById('type-description').value;
-          
-          const url = id ? `/api/ticket-types/${id}` : '/api/ticket-types';
-          const method = id ? 'PUT' : 'POST';
-          
-          fetch(url, {
-            method: method,
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ name, description })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              showToast(id ? 'Tipo de chamado atualizado com sucesso' : 'Tipo de chamado adicionado com sucesso');
-              hideModal('type-modal');
-              loadTicketTypes();
-            } else {
-              alert(data.error || 'Erro ao salvar tipo de chamado');
-            }
-          })
-          .catch(error => {
-            console.error('Error saving ticket type:', error);
-            alert('Erro ao salvar tipo de chamado');
-          });
-        });
-      }
-      
-      // Ticket status form
-      const statusForm = document.getElementById('ticket-status-form');
-      if (statusForm) {
-        statusForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          
-          const id = document.getElementById('status-id').value;
-          const name = document.getElementById('status-name').value;
-          const color = document.getElementById('status-color').value;
-          
-          const url = id ? `/api/ticket-statuses/${id}` : '/api/ticket-statuses';
-          const method = id ? 'PUT' : 'POST';
-          
-          fetch(url, {
-            method: method,
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ name, color })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              showToast(id ? 'Status de chamado atualizado com sucesso' : 'Status de chamado adicionado com sucesso');
-              hideModal('status-modal');
-              loadTicketTypes();
-            } else {
-              alert(data.error || 'Erro ao salvar status de chamado');
-            }
-          })
-          .catch(error => {
-            console.error('Error saving ticket status:', error);
-            alert('Erro ao salvar status de chamado');
-          });
-        });
-      }
-      
-      // User form
-      const userForm = document.getElementById('add-user-form');
-      if (userForm) {
-        userForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          
-          const name = this.querySelector('input[type="text"]').value;
-          const email = this.querySelector('input[type="email"]').value;
-          const password = this.querySelector('input[type="password"]').value;
-          const phone = this.querySelectorAll('input')[3].value;
-          const isAdmin = this.querySelector('input[type="checkbox"]').checked;
-          
-          fetch('/api/admin/users', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ name, email, password, phone, is_admin: isAdmin })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              showToast('Usuário adicionado com sucesso');
-              hideModal('add-user-modal');
-              loadUsers();
-            } else {
-              alert(data.error || 'Erro ao adicionar usuário');
-            }
-          })
-          .catch(error => {
-            console.error('Error adding user:', error);
-            alert('Erro ao adicionar usuário');
-          });
-        });
-      }
-      
-      // Filter handlers
-      const applyOpenTicketsFilters = document.getElementById('apply-open-tickets-filters');
-      if (applyOpenTicketsFilters) {
-        applyOpenTicketsFilters.addEventListener('click', function() {
-          const typeFilter = document.getElementById('open-tickets-type-filter').value;
-          const priorityFilter = document.getElementById('open-tickets-priority-filter').value;
-          
-          let filteredTickets = allTickets.filter(t => ['Aberto', 'Em Andamento', 'Pendente'].includes(t.status));
-          
-          if (typeFilter) {
-            filteredTickets = filteredTickets.filter(t => t.type === typeFilter);
-          }
-          
-          if (priorityFilter) {
-            filteredTickets = filteredTickets.filter(t => t.priority === priorityFilter);
-          }
-          
-          updateOpenTicketsTable(filteredTickets);
-        });
-      }
-      
-      const applyClosedTicketsFilters = document.getElementById('apply-closed-tickets-filters');
-      if (applyClosedTicketsFilters) {
-        applyClosedTicketsFilters.addEventListener('click', function() {
-          const startDate = document.getElementById('closed-tickets-start-date').value;
-          const endDate = document.getElementById('closed-tickets-end-date').value;
-          
-          let filteredTickets = allTickets.filter(t => ['Resolvido', 'Fechado'].includes(t.status));
-          
-          if (startDate) {
-            filteredTickets = filteredTickets.filter(t => new Date(t.closed_at) >= new Date(startDate));
-          }
-          
-          if (endDate) {
-            filteredTickets = filteredTickets.filter(t => new Date(t.closed_at) <= new Date(endDate));
-          }
-          
-          updateClosedTicketsTable(filteredTickets);
-        });
-      }
-      
-      // Modal close handlers
-      const { modal, closeBtn } = getAdminModalElements();
-      if (closeBtn && modal) {
-        closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
-        modal.addEventListener('click', (e) => { 
-          if (e.target.id === 'admin-ticket-modal') modal.classList.add('hidden'); 
-        });
-      }
-      
-      // Função para carregar administradores no select
-      function loadAdministrators() {
-        fetch('/api/admin/users')
-          .then(response => {
-            if (!response.ok) {
-              throw new Error('Falha ao carregar administradores');
-            }
-            return response.json();
-          })
-          .then(users => {
-            const adminSelect = document.getElementById('assign-admin-select');
-            // Limpar opções existentes, mantendo apenas a opção padrão
-            adminSelect.innerHTML = '<option value="">Selecione um administrador</option>';
-            
-            // Filtrar apenas administradores
-            const admins = users.filter(user => user.is_admin);
-            
-            if (admins.length === 0) {
-              adminSelect.innerHTML += '<option disabled>Nenhum administrador encontrado</option>';
-              return;
-            }
-            
-            // Adicionar opções de administradores
-            admins.forEach(admin => {
-              adminSelect.innerHTML += `<option value="${admin.id}">${admin.name}</option>`;
-            });
-          })
-          .catch(error => {
-            console.error('Erro ao carregar administradores:', error);
-            document.getElementById('assign-admin-select').innerHTML = 
-              '<option value="">Selecione um administrador</option><option disabled>Erro ao carregar administradores</option>';
-          });
-      }
-      
-      // Form handlers for ticket actions
-      const replyTicketForm = document.getElementById('reply-ticket-form');
-      if (replyTicketForm) {
-        replyTicketForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          
-          const ticketId = document.getElementById('reply-ticket-id-input').value;
-          const message = document.getElementById('reply-message').value;
-          
-          if (!ticketId || !message) {
-            alert('Por favor, preencha a mensagem.');
-            return;
-          }
-          
-          // Simulação de resposta bem-sucedida para demonstração
-          // Em um ambiente real, isso seria uma chamada de API
-          setTimeout(() => {
-            showToast('Resposta enviada com sucesso');
-            hideModal('reply-ticket-modal');
-            // Reload tickets to reflect any status changes
-            loadRecentTickets();
-          }, 500);
-          
-          // Versão com API real (comentada para demonstração)
-          /*
-          fetch(`/api/tickets/${ticketId}/reply`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ message })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              showToast('Resposta enviada com sucesso');
-              hideModal('reply-ticket-modal');
-              // Reload tickets to reflect any status changes
-              loadRecentTickets();
-            } else {
-              alert(data.error || 'Erro ao enviar resposta');
-            }
-          })
-          .catch(error => {
-            console.error('Error sending reply:', error);
-            alert('Erro ao enviar resposta');
-          });
-          */
-        });
-      }
-      
-      // Form handler para atribuir chamado
-      const assignTicketForm = document.getElementById('assign-ticket-form');
-      if (assignTicketForm) {
-        assignTicketForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          
-          const ticketId = document.getElementById('assign-ticket-id-input').value;
-          const adminId = document.getElementById('assign-admin-select').value;
-          
-          if (!ticketId || !adminId) {
-            alert('Por favor, selecione um administrador.');
-            return;
-          }
-          
-          // Simulação de resposta bem-sucedida para demonstração
-          // Em um ambiente real, isso seria uma chamada de API
-          setTimeout(() => {
-            showToast('Chamado atribuído com sucesso');
-            hideModal('assign-ticket-modal');
-            // Reload tickets to reflect the assignment
-            loadOpenTickets();
-          }, 500);
-          
-          // Versão com API real (comentada para demonstração)
-          /*
-          fetch(`/api/tickets/${ticketId}/assign`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ admin_id: adminId })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              showToast('Chamado atribuído com sucesso');
-              hideModal('assign-ticket-modal');
-              // Reload tickets to reflect the assignment
-              loadOpenTickets();
-            } else {
-              alert(data.error || 'Erro ao atribuir chamado');
-            }
-          })
-          .catch(error => {
-            console.error('Error assigning ticket:', error);
-            alert('Erro ao atribuir chamado');
-          });
-          */
-        });
-      }
-      
-      const closeTicketForm = document.getElementById('close-ticket-form');
-      if (closeTicketForm) {
-        closeTicketForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          
-          const ticketId = document.getElementById('close-ticket-id-input').value;
-          const note = document.getElementById('close-ticket-note').value;
-          
-          if (!ticketId) {
-            alert('ID do chamado não encontrado.');
-            return;
-          }
-          
-          // Simulação de resposta bem-sucedida para demonstração
-          // Em um ambiente real, isso seria uma chamada de API
-          setTimeout(() => {
-            showToast('Chamado finalizado com sucesso');
-            hideModal('close-ticket-modal');
-            // Reload tickets to reflect the status change
-            loadRecentTickets();
-            // If we're in the open tickets section, reload that too
-            const currentSection = document.querySelector('.nav-link.bg-primary-50');
-            if (currentSection && currentSection.getAttribute('onclick').includes('open-tickets')) {
-              loadOpenTickets();
-            }
-          }, 500);
-          
-          // Versão com API real (comentada para demonstração)
-          /*
-          fetch(`/api/tickets/${ticketId}/close`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ note })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              showToast('Chamado finalizado com sucesso');
-              hideModal('close-ticket-modal');
-              // Reload tickets to reflect the status change
-              loadRecentTickets();
-              // If we're in the open tickets section, reload that too
-              const currentSection = document.querySelector('.nav-link.bg-primary-50');
-              if (currentSection && currentSection.getAttribute('onclick').includes('open-tickets')) {
-                loadOpenTickets();
-              }
-            } else {
-              alert(data.error || 'Erro ao finalizar chamado');
-            }
-          })
-          .catch(error => {
-            console.error('Error closing ticket:', error);
-            alert('Erro ao finalizar chamado');
-          });
-          */
-        });
-      }
-      
-      // Inicializa a página mostrando a seção do dashboard
-      document.addEventListener('DOMContentLoaded', function() {
-        showSection('dashboard');
-      });
-      
-      // Load dashboard data on page load
-      loadDashboardData();
-      
-      // Set up periodic refresh for dashboard data
-      setInterval(() => {
-        const currentSection = document.querySelector('.nav-link.bg-primary-50');
-        if (currentSection) {
-          const sectionName = currentSection.getAttribute('onclick').match(/showSection\('([^']+)'\)/)[1];
-          if (sectionName === 'dashboard') {
-            loadDashboardData();
-          } else if (sectionName === 'open-tickets') {
-            loadOpenTickets();
-          } else if (sectionName === 'closed-tickets') {
-            loadClosedTickets();
-          }
-        }
-      }, 30000); // Refresh every 30 seconds
-    });
-  </script>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/performance.js"></script>
+<script src="/static/js/admin-dashboard.js"></script>
+
 </body>
 </html>

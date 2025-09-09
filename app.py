@@ -11,7 +11,7 @@ from collections import defaultdict
 from werkzeug.utils import secure_filename
 from database import init_database
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 app.secret_key = 'super_secret_key'
 app.permanent_session_lifetime = timedelta(days=7)
 
@@ -688,6 +688,70 @@ def api_admin_update_ticket_status(ticket_id):
     conn.close()
     
     return jsonify({'success': True})
+
+@app.route('/api/tickets/<int:ticket_id>/responses', methods=['GET'])
+def api_get_ticket_responses(ticket_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    conn = get_db_connection()
+    ticket = conn.execute('SELECT user_id FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    if not ticket:
+        conn.close()
+        return jsonify({'error': 'Ticket not found'}), 404
+
+    # Only allow admin or the ticket owner to view responses
+    if not (session.get('is_admin') or ticket['user_id'] == session['user_id']):
+        conn.close()
+        return jsonify({'error': 'Forbidden'}), 403
+
+    responses = conn.execute('''
+        SELECT tr.id, tr.message, tr.created_at, u.name as user_name, u.is_admin
+        FROM ticket_responses tr
+        JOIN users u ON tr.user_id = u.id
+        WHERE tr.ticket_id = ?
+        ORDER BY tr.created_at ASC
+    ''', (ticket_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(response) for response in responses])
+
+@app.route('/api/tickets/<int:ticket_id>/responses', methods=['POST'])
+def api_create_ticket_response(ticket_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json()
+    message = data.get('message', '').strip()
+    if not message:
+        return jsonify({'error': 'Message cannot be empty'}), 400
+
+    conn = get_db_connection()
+    ticket = conn.execute('SELECT user_id FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    if not ticket:
+        conn.close()
+        return jsonify({'error': 'Ticket not found'}), 404
+
+    # Only allow admin or the ticket owner to add responses
+    if not (session.get('is_admin') or ticket['user_id'] == session['user_id']):
+        conn.close()
+        return jsonify({'error': 'Forbidden'}), 403
+
+    cur = conn.cursor()
+    cur.execute('''
+        INSERT INTO ticket_responses (ticket_id, user_id, message)
+        VALUES (?, ?, ?)
+    ''', (ticket_id, session['user_id'], message))
+    conn.commit()
+
+    # Notify the other party (user if admin responded, admin if user responded)
+    if session.get('is_admin'):
+        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'response_admin')
+    else:
+        # This would ideally notify admins, but for simplicity, we'll assume admins check the dashboard
+        pass 
+
+    conn.close()
+    return jsonify({'success': True, 'response_id': cur.lastrowid})
 
 # Admin General Settings API
 @app.route('/api/admin/settings', methods=['GET'])
