@@ -44,37 +44,37 @@
       
       <nav class="px-4 py-6">
         <div class="space-y-1">
-          <a href="#" onclick="showSection('dashboard')" 
+          <a href="#" onclick="AdminDashboard.showSection('dashboard')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg bg-primary-50 text-primary-700">
             <span class="material-symbols-outlined mr-3 text-xl">dashboard</span>
             Painel Principal
           </a>
-          <a href="#" onclick="showSection('open-tickets')" 
+          <a href="#" onclick="AdminDashboard.showSection('open-tickets')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">confirmation_number</span>
             Chamados Abertos
           </a>
-          <a href="#" onclick="showSection('closed-tickets')" 
+          <a href="#" onclick="AdminDashboard.showSection('closed-tickets')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">task_alt</span>
             Chamados Fechados
           </a>
-          <a href="#" onclick="showSection('ticket-types')" 
+          <a href="#" onclick="AdminDashboard.showSection('ticket-types')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">category</span>
             Tipos de Chamados
           </a>
-          <a href="#" onclick="showSection('users')" 
+          <a href="#" onclick="AdminDashboard.showSection('users')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">group</span>
             Usuários
           </a>
-          <a href="#" onclick="showSection('user-messages')" 
+          <a href="#" onclick="AdminDashboard.showSection('user-messages')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">message</span>
             Mensagens do Usuário
           </a>
-          <a href="#" onclick="showSection('settings')" 
+          <a href="#" onclick="AdminDashboard.showSection('settings')" 
              class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-all">
             <span class="material-symbols-outlined mr-3 text-xl">settings</span>
             Configurações
@@ -229,7 +229,7 @@
                 <span class="material-symbols-outlined absolute left-3 top-2.5 text-gray-400">search</span>
               </div>
               <div class="relative">
-                <select id="dashboard-sort-order" onchange="sortRecentTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <select id="dashboard-sort-order" onchange="AdminDashboard.sortRecentTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="newest">Mais recentes</option>
                   <option value="oldest">Mais antigos</option>
                   <option value="priority">Por prioridade</option>
@@ -245,22 +245,22 @@
             <table class="min-w-full divide-y divide-gray-200">
               <thead>
                   <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('id', 'recent')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('id', 'recent')">
                           ID <span id="sort-id-recent" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('subject', 'recent')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('subject', 'recent')">
                           Assunto <span id="sort-subject-recent" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('user_name', 'recent')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('user_name', 'recent')">
                           Solicitante <span id="sort-user_name-recent" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('type', 'recent')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('type', 'recent')">
                           Tipo <span id="sort-type-recent" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('status', 'recent')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('status', 'recent')">
                           Status <span id="sort-status-recent" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('created_at', 'recent')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('created_at', 'recent')">
                           Criado em <span id="sort-created_at-recent" class="text-xs">↕</span>
                       </th>
                       <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -282,7 +282,7 @@
             <h3 class="text-lg font-medium">Chamados Abertos</h3>
             <div class="flex items-center space-x-2">
               <div class="relative">
-                <select id="open-tickets-sort-order" onchange="sortOpenTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <select id="open-tickets-sort-order" onchange="AdminDashboard.sortOpenTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="newest">Mais recentes</option>
                   <option value="oldest">Mais antigos</option>
                   <option value="priority">Por prioridade</option>
@@ -312,22 +312,22 @@
             <table class="min-w-full divide-y divide-gray-200">
               <thead>
                   <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('id', 'open')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('id', 'open')">
                           ID <span id="sort-id-open" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('subject', 'open')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('subject', 'open')">
                           Assunto <span id="sort-subject-open" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('user_name', 'open')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('user_name', 'open')">
                           Solicitante <span id="sort-user_name-open" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('type', 'open')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('type', 'open')">
                           Tipo <span id="sort-type-open" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('priority', 'open')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('priority', 'open')">
                           Prioridade <span id="sort-priority-open" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('created_at', 'open')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('created_at', 'open')">
                           Criado em <span id="sort-created_at-open" class="text-xs">↕</span>
                       </th>
                       <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -349,7 +349,7 @@
             <h3 class="text-lg font-medium">Chamados Fechados</h3>
             <div class="flex items-center space-x-2">
               <div class="relative">
-                <select id="closed-tickets-sort-order" onchange="sortClosedTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <select id="closed-tickets-sort-order" onchange="AdminDashboard.sortClosedTickets()" class="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="newest">Mais recentes</option>
                   <option value="oldest">Mais antigos</option>
                   <option value="priority">Por prioridade</option>
@@ -372,22 +372,22 @@
             <table class="min-w-full divide-y divide-gray-200">
               <thead>
                   <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('id', 'closed')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('id', 'closed')">
                           ID <span id="sort-id-closed" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('subject', 'closed')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('subject', 'closed')">
                           Assunto <span id="sort-subject-closed" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('user_name', 'closed')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('user_name', 'closed')">
                           Solicitante <span id="sort-user_name-closed" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('type', 'closed')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('type', 'closed')">
                           Tipo <span id="sort-type-closed" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('closed_at', 'closed')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('closed_at', 'closed')">
                           Fechado em <span id="sort-closed_at-closed" class="text-xs">↕</span>
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('duration', 'closed')">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="AdminDashboard.sortTable('duration', 'closed')">
                           Tempo Total <span id="sort-duration-closed" class="text-xs">↕</span>
                       </th>
                       <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
