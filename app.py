@@ -922,15 +922,26 @@ def api_create_ticket_response(ticket_id):
         return jsonify({'error': 'Message cannot be empty'}), 400
 
     conn = get_db_connection()
-    ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    # Buscar ticket com nome do usuário
+    ticket = conn.execute('''
+        SELECT t.*, u.name as user_name
+        FROM tickets t
+        LEFT JOIN users u ON t.user_id = u.id
+        WHERE t.id = ?
+    ''', (ticket_id,)).fetchone()
     if not ticket:
         conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
+    # Buscar nome do administrador atribuído (se houver)
+    assigned_user = None
+    if ticket['assigned_to']:
+        assigned_user = conn.execute('SELECT name FROM users WHERE id = ?', (ticket['assigned_to'],)).fetchone()
+
 # Only allow: ticket owner OR assigned admin/manager (if assigned), otherwise forbid
     is_owner = (ticket['user_id'] == session['user_id'])
     is_staff = (session.get('is_admin') or session.get('user_role') in ['admin', 'manager'])
-    assigned_to = ticket.get('assigned_to') if isinstance(ticket, dict) else ticket['assigned_to']
+    assigned_to = ticket['assigned_to']
     if is_staff and assigned_to:
         # Staff can only respond if they are assigned to this ticket
         if session['user_id'] != assigned_to:
@@ -955,12 +966,18 @@ def api_create_ticket_response(ticket_id):
         # Send Telegram notification for admin response
         try:
             admin_name = session.get('user_name', 'Administrador')
+            assignee = assigned_user['name'] if assigned_user and 'name' in assigned_user.keys() else None
+            user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
+            ticket_type = ticket['type'] if ticket['type'] else 'N/A'
+            
             response_message = f"\U0001F4AC <b>Nova Resposta do Suporte</b>\n\n"
             response_message += f"<b>ID:</b> #{ticket_id}\n"
             response_message += f"<b>Respondido por:</b> {admin_name}\n"
-            response_message += f"<b>Tipo:</b> {ticket.get('type', '')}\n"
-            response_message += f"<b>Usuário:</b> {ticket.get('user_name', 'Usuário')}\n"
-            response_message += f"<b>Mensagem:</b> {message[:100]}{'...' if len(message) > 100 else ''}"
+            if assignee:
+                response_message += f"<b>Admin Atribuído:</b> {assignee}\n"
+            response_message += f"<b>Tipo:</b> {ticket_type}\n"
+            response_message += f"<b>Usuário:</b> {user_name}\n"
+            response_message += f"<b>Mensagem:</b> {message[:500]}{'...' if len(message) > 500 else ''}"
             
             send_telegram_notification(response_message, 'response_admin')
         except Exception as e:
@@ -974,13 +991,19 @@ def api_create_ticket_response(ticket_id):
         
         # Send Telegram notification for user response
         try:
-            user_name = ticket.get('user_name', 'Usuário')
+            user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
+            assignee = assigned_user['name'] if assigned_user and 'name' in assigned_user.keys() else None
+            ticket_type = ticket['type'] if ticket['type'] else 'N/A'
+            ticket_priority = ticket['priority'] if ticket['priority'] else 'N/A'
+            
             response_message = f"\U0001F4E8 <b>Nova Resposta do Usuário</b>\n\n"
             response_message += f"<b>ID:</b> #{ticket_id}\n"
             response_message += f"<b>Usuário:</b> {user_name}\n"
-            response_message += f"<b>Tipo:</b> {ticket.get('type', '')}\n"
-            response_message += f"<b>Prioridade:</b> {ticket.get('priority', '')}\n"
-            response_message += f"<b>Mensagem:</b> {message[:100]}{'...' if len(message) > 100 else ''}"
+            if assignee:
+                response_message += f"<b>Admin Atribuído:</b> {assignee}\n"
+            response_message += f"<b>Tipo:</b> {ticket_type}\n"
+            response_message += f"<b>Prioridade:</b> {ticket_priority}\n"
+            response_message += f"<b>Mensagem:</b> {message[:500]}{'...' if len(message) > 500 else ''}"
             
             send_telegram_notification(response_message, 'response_user')
         except Exception as e:
@@ -1133,8 +1156,13 @@ def api_admin_assign_ticket(ticket_id):
     
     conn = get_db_connection()
     try:
-        # Verificar se o ticket existe
-        ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+        # Verificar se o ticket existe e buscar nome do usuário
+        ticket = conn.execute('''
+            SELECT t.*, u.name as user_name
+            FROM tickets t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.id = ?
+        ''', (ticket_id,)).fetchone()
         if not ticket:
             return jsonify({'error': 'Ticket não encontrado'}), 404
         
@@ -1156,13 +1184,18 @@ def api_admin_assign_ticket(ticket_id):
         
         # Send special assignment notification to Telegram
         try:
+            user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
+            ticket_type = ticket['type'] if ticket['type'] else 'N/A'
+            ticket_priority = ticket['priority'] if ticket['priority'] else 'N/A'
+            ticket_subject = ticket['subject'] if ticket['subject'] else (ticket['description'][:50] if ticket['description'] else 'N/A')
+            
             assignment_message = f"\U0001F464 <b>Chamado Atribuído</b>\n\n"
             assignment_message += f"<b>ID:</b> #{ticket_id}\n"
             assignment_message += f"<b>Responsável:</b> {assigned_user['name']}\n"
-            assignment_message += f"<b>Tipo:</b> {ticket.get('type', '')}\n"
-            assignment_message += f"<b>Prioridade:</b> {ticket.get('priority', '')}\n"
-            assignment_message += f"<b>Assunto:</b> {ticket.get('subject', ticket.get('description', ''))[:50]}\n"
-            assignment_message += f"<b>Usuário:</b> {ticket.get('user_name', 'Usuário')}"
+            assignment_message += f"<b>Tipo:</b> {ticket_type}\n"
+            assignment_message += f"<b>Prioridade:</b> {ticket_priority}\n"
+            assignment_message += f"<b>Assunto:</b> {ticket_subject}\n"
+            assignment_message += f"<b>Usuário:</b> {user_name}"
             
             send_telegram_notification(assignment_message, 'assigned')
         except Exception as e:
