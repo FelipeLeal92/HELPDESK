@@ -51,6 +51,41 @@ def generate_password(length=8):
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
+def send_telegram_notification(message):
+    """Envia notificação via Telegram usando bot e grupo configurados"""
+    try:
+        conn = get_db_connection()
+        bot_token_row = conn.execute('SELECT value FROM settings WHERE key = ?', ('telegram_bot_token',)).fetchone()
+        group_id_row = conn.execute('SELECT value FROM settings WHERE key = ?', ('telegram_group_id',)).fetchone()
+        conn.close()
+        
+        if not bot_token_row or not group_id_row or not bot_token_row['value'] or not group_id_row['value']:
+            print("Configurações do Telegram não encontradas")
+            return False
+            
+        bot_token = bot_token_row['value']
+        group_id = group_id_row['value']
+        
+        import requests
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        data = {
+            'chat_id': group_id,
+            'text': message,
+            'parse_mode': 'HTML'
+        }
+        
+        response = requests.post(url, data=data, timeout=10)
+        if response.status_code == 200:
+            print(f"Telegram notification sent: {message[:50]}...")
+            return True
+        else:
+            print(f"Erro ao enviar Telegram: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Erro ao enviar notificação Telegram: {str(e)}")
+        return False
+
 def send_email(to_email, subject, body):
     # This is a placeholder function
     # In production, configure with real SMTP settings
@@ -137,7 +172,9 @@ def ensure_schema_and_password_hash():
         defaults = [
             ('company_name', 'LogVerse'),
             ('support_email', 'suporte@logverse.com'),
-            ('support_phone', '(11) 1234-5678')
+            ('support_phone', '(11) 1234-5678'),
+            ('telegram_bot_token', ''),
+            ('telegram_group_id', '')
         ]
         for k, v in defaults:
             cur.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', (k, v))
@@ -162,29 +199,52 @@ def ensure_schema_and_password_hash():
 
 # Helper to notify user on ticket events
 def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
-    """Send email/SMS/push based on user preferences for ticket updates."""
+    """Send Telegram/SMS/push based on user preferences for ticket updates."""
     try:
         conn = get_db_connection()
-        user = conn.execute('SELECT email, phone, email_updates, sms_urgent, push_realtime FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT name, email, phone, email_updates, sms_urgent, push_realtime FROM users WHERE id = ?', (user_id,)).fetchone()
         conn.close()
         
         if not user:
             return
             
-        subject = f"Atualização do chamado #{ticket.get('id', '')}"
-        body = f"Seu chamado foi atualizado. Tipo: {ticket.get('type')} | Prioridade: {ticket.get('priority')} | Evento: {event_type}."
-        
-        # Email
-        if (user['email_updates'] or 0) == 1 and user['email']:
+        # Telegram notification (replaces email)
+        if (user['email_updates'] or 0) == 1:  # Using email_updates preference for Telegram
+            ticket_id = ticket.get('id', '')
+            ticket_type = ticket.get('type', '')
+            priority = ticket.get('priority', '')
+            subject = ticket.get('subject', ticket.get('description', ''))[:50]
+            user_name = user['name'] or 'Usuário'
+            
+            # Format message for Telegram
+            if event_type == 'created':
+                message = f"\U0001F4E8 <b>Novo Chamado Criado</b>\n\n"
+            elif event_type == 'assigned':
+                message = f"\U0001F464 <b>Chamado Atribuído</b>\n\n"
+            elif event_type == 'status_changed':
+                message = f"\U0001F504 <b>Status Atualizado</b>\n\n"
+            elif event_type == 'reopened':
+                message = f"\U0001F513 <b>Chamado Reaberto</b>\n\n"
+            else:
+                message = f"\U0001F4E7 <b>Atualização do Chamado</b>\n\n"
+                
+            message += f"<b>ID:</b> #{ticket_id}\n"
+            message += f"<b>Usuário:</b> {user_name}\n"
+            message += f"<b>Tipo:</b> {ticket_type}\n"
+            message += f"<b>Prioridade:</b> {priority}\n"
+            message += f"<b>Assunto:</b> {subject}\n"
+            message += f"<b>Evento:</b> {event_type}"
+            
             try:
-                send_email(user['email'], subject, body)
+                send_telegram_notification(message)
             except Exception as e:
-                print(f"Erro ao enviar email: {str(e)}")
+                print(f"Erro ao enviar Telegram: {str(e)}")
                 
         # SMS (only if urgent)
         if (user['sms_urgent'] or 0) == 1 and (ticket.get('priority') == 'Urgente') and user['phone']:
             try:
-                send_sms(user['phone'], f"[URGENTE] {body}")
+                sms_body = f"[URGENTE] Chamado #{ticket.get('id')} - {event_type}"
+                send_sms(user['phone'], sms_body)
             except Exception as e:
                 print(f"Erro ao enviar SMS: {str(e)}")
                 
@@ -875,7 +935,9 @@ def api_admin_get_settings():
     return jsonify({
         'company_name': data.get('company_name', ''),
         'support_email': data.get('support_email', ''),
-        'support_phone': data.get('support_phone', '')
+        'support_phone': data.get('support_phone', ''),
+        'telegram_bot_token': data.get('telegram_bot_token', ''),
+        'telegram_group_id': data.get('telegram_group_id', '')
     })
 
 @app.route('/api/admin/settings', methods=['PUT'])
@@ -883,7 +945,7 @@ def api_admin_update_settings():
     if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     data = request.get_json() or {}
-    allowed_keys = {'company_name', 'support_email', 'support_phone'}
+    allowed_keys = {'company_name', 'support_email', 'support_phone', 'telegram_bot_token', 'telegram_group_id'}
     conn = get_db_connection()
     cur = conn.cursor()
     for k in allowed_keys:
@@ -892,6 +954,83 @@ def api_admin_update_settings():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+@app.route('/api/admin/telegram/test', methods=['POST'])
+def api_test_telegram():
+    """Testa a conexão com o bot do Telegram"""
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json() or {}
+    bot_token = data.get('bot_token', '').strip()
+    group_id = data.get('group_id', '').strip()
+    
+    if not bot_token or not group_id:
+        return jsonify({'error': 'Token do bot e ID do grupo são obrigatórios'}), 400
+    
+    try:
+        import requests
+        
+        # Test bot token
+        bot_url = f"https://api.telegram.org/bot{bot_token}/getMe"
+        bot_response = requests.get(bot_url, timeout=10)
+        
+        if bot_response.status_code != 200:
+            return jsonify({
+                'success': False, 
+                'error': 'Token do bot inválido ou bot não encontrado'
+            }), 400
+        
+        bot_info = bot_response.json()
+        if not bot_info.get('ok'):
+            return jsonify({
+                'success': False, 
+                'error': 'Token do bot inválido'
+            }), 400
+        
+        bot_name = bot_info.get('result', {}).get('username', 'Bot')
+        
+        # Test sending message to group
+        test_message = f"\U0001F916 <b>Teste de Conexão</b>\n\nBot <b>@{bot_name}</b> conectado com sucesso!\nSistema HelpDesk configurado."
+        
+        message_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        message_data = {
+            'chat_id': group_id,
+            'text': test_message,
+            'parse_mode': 'HTML'
+        }
+        
+        message_response = requests.post(message_url, data=message_data, timeout=10)
+        
+        if message_response.status_code != 200:
+            return jsonify({
+                'success': False, 
+                'error': 'Não foi possível enviar mensagem para o grupo. Verifique o ID do grupo e se o bot foi adicionado ao grupo.'
+            }), 400
+        
+        message_result = message_response.json()
+        if not message_result.get('ok'):
+            error_description = message_result.get('description', 'Erro desconhecido')
+            return jsonify({
+                'success': False, 
+                'error': f'Erro ao enviar mensagem: {error_description}'
+            }), 400
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Conexão testada com sucesso! Bot @{bot_name} pode enviar mensagens para o grupo.'
+        })
+        
+    except requests.RequestException as e:
+        return jsonify({
+            'success': False, 
+            'error': f'Erro de conexão: {str(e)}'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False, 
+            'error': f'Erro interno: {str(e)}'
+        }), 500
 
 @app.route('/api/admin/administrators', methods=['GET'])
 def api_get_administrators():

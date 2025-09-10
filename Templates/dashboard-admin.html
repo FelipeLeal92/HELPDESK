@@ -581,37 +581,54 @@
           </div>
           
           <div class="bg-white rounded-lg shadow-sm p-6">
-            <h3 class="text-lg font-medium mb-6">Configurações de Email</h3>
+            <h3 class="text-lg font-medium mb-6">Configurações de Notificações</h3>
             
-            <form class="space-y-6">
-              <div>
-                <label class="block text-gray-700 mb-2">Servidor SMTP</label>
-                <input type="text" placeholder="smtp.gmail.com" 
-                       class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+            <form id="telegram-settings-form" class="space-y-6">
+              <div class="mb-4">
+                <h4 class="text-md font-semibold mb-3 text-gray-800">Telegram Bot</h4>
+                <p class="text-sm text-gray-600 mb-4">Configure um bot do Telegram para receber notificações do sistema em um grupo.</p>
               </div>
               
               <div>
-                <label class="block text-gray-700 mb-2">Porta</label>
-                <input type="number" value="587" 
+                <label class="block text-gray-700 mb-2" for="telegram-bot-token">Token do Bot</label>
+                <input id="telegram-bot-token" type="password" placeholder="1234567890:AAAAAAAAAA_BBBBBBBBBBBBBBBBBBBBBB" 
                        class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <p class="text-xs text-gray-500 mt-1">Obtenha o token criando um bot com o @BotFather no Telegram</p>
               </div>
               
               <div>
-                <label class="block text-gray-700 mb-2">Usuário</label>
-                <input type="email" placeholder="seu-email@gmail.com" 
+                <label class="block text-gray-700 mb-2" for="telegram-group-id">ID do Grupo</label>
+                <input id="telegram-group-id" type="text" placeholder="-1001234567890" 
                        class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <p class="text-xs text-gray-500 mt-1">ID do grupo onde as notificações serão enviadas (deve começar com -)</p>
               </div>
               
-              <div>
-                <label class="block text-gray-700 mb-2">Senha</label>
-                <input type="password" placeholder="sua-senha" 
-                       class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <div class="border-t pt-4">
+                <div class="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 class="text-md font-semibold text-gray-800">Status da Conexão</h4>
+                    <p class="text-sm text-gray-600">Teste a conexão com o bot do Telegram</p>
+                  </div>
+                  <button type="button" id="test-telegram-btn" 
+                          class="bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors">
+                    Testar Conexão
+                  </button>
+                </div>
+                <div id="telegram-status" class="hidden">
+                  <div id="telegram-status-content" class="p-3 rounded-lg text-sm"></div>
+                </div>
               </div>
               
-              <button type="submit" 
-                      class="bg-primary-500 text-white py-2 px-6 rounded-lg hover:bg-primary-600 transition-colors">
-                Salvar Configurações
-              </button>
+              <div class="flex gap-3">
+                <button type="submit" 
+                        class="bg-primary-500 text-white py-2 px-6 rounded-lg hover:bg-primary-600 transition-colors">
+                  Salvar Configurações
+                </button>
+                <button type="button" id="clear-telegram-settings" 
+                        class="bg-gray-300 text-gray-700 py-2 px-6 rounded-lg hover:bg-gray-400 transition-colors">
+                  Limpar
+                </button>
+              </div>
             </form>
           </div>
           <!-- Help Center Settings -->

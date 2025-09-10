@@ -1431,6 +1431,103 @@ const AdminDashboard = (function() {
                 } catch (err) { Common.showToast(err.message); }
             });
         }
+        
+        // Telegram settings form
+        const telegramSettingsForm = document.getElementById('telegram-settings-form');
+        if (telegramSettingsForm) {
+            telegramSettingsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const telegram_bot_token = document.getElementById('telegram-bot-token').value.trim();
+                const telegram_group_id = document.getElementById('telegram-group-id').value.trim();
+                
+                try {
+                    const r = await fetch('/api/admin/settings', {
+                        method: 'PUT', 
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ telegram_bot_token, telegram_group_id })
+                    });
+                    const data = await r.json().catch(() => null);
+                    if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao salvar configurações do Telegram.');
+                    Common.showToast('Configurações do Telegram salvas');
+                } catch (err) { 
+                    Common.showToast(err.message); 
+                }
+            });
+        }
+        
+        // Test Telegram connection
+        const testTelegramBtn = document.getElementById('test-telegram-btn');
+        if (testTelegramBtn) {
+            testTelegramBtn.addEventListener('click', async () => {
+                const botToken = document.getElementById('telegram-bot-token').value.trim();
+                const groupId = document.getElementById('telegram-group-id').value.trim();
+                
+                if (!botToken || !groupId) {
+                    Common.showToast('Por favor, preencha o token do bot e o ID do grupo.');
+                    return;
+                }
+                
+                const statusDiv = document.getElementById('telegram-status');
+                const statusContent = document.getElementById('telegram-status-content');
+                
+                // Show loading
+                statusDiv.classList.remove('hidden');
+                statusContent.className = 'p-3 rounded-lg text-sm bg-blue-100 text-blue-800';
+                statusContent.textContent = 'Testando conexão...';
+                
+                try {
+                    const response = await fetch('/api/admin/telegram/test', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bot_token: botToken, group_id: groupId })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        statusContent.className = 'p-3 rounded-lg text-sm bg-green-100 text-green-800';
+                        statusContent.textContent = data.message;
+                    } else {
+                        statusContent.className = 'p-3 rounded-lg text-sm bg-red-100 text-red-800';
+                        statusContent.textContent = data.error;
+                    }
+                } catch (error) {
+                    statusContent.className = 'p-3 rounded-lg text-sm bg-red-100 text-red-800';
+                    statusContent.textContent = `Erro de conexão: ${error.message}`;
+                }
+            });
+        }
+        
+        // Clear Telegram settings
+        const clearTelegramBtn = document.getElementById('clear-telegram-settings');
+        if (clearTelegramBtn) {
+            clearTelegramBtn.addEventListener('click', () => {
+                if (confirm('Tem certeza que deseja limpar as configurações do Telegram?')) {
+                    document.getElementById('telegram-bot-token').value = '';
+                    document.getElementById('telegram-group-id').value = '';
+                    document.getElementById('telegram-status').classList.add('hidden');
+                }
+            });
+        }
+        
+        // Load existing Telegram settings
+        loadTelegramSettings();
+    }
+    
+    async function loadTelegramSettings() {
+        try {
+            const response = await fetch('/api/admin/settings');
+            const data = await response.json();
+            
+            if (data.telegram_bot_token) {
+                document.getElementById('telegram-bot-token').value = data.telegram_bot_token;
+            }
+            if (data.telegram_group_id) {
+                document.getElementById('telegram-group-id').value = data.telegram_group_id;
+            }
+        } catch (error) {
+            console.error('Error loading Telegram settings:', error);
+        }
     }
 
     function sortRecentTickets() {
