@@ -34,40 +34,88 @@ Este guia explica como configurar notificações via Telegram no sistema HelpDes
 1. Adicione `@userinfobot` ao grupo
 2. O bot enviará automaticamente o ID do grupo
 
-### 3️⃣ Configurar no Sistema
+### 3️⃣ Criar Tópicos no Grupo (Opcional)
+
+1. No seu grupo do Telegram, ative os **Tópicos** nas configurações do grupo
+2. Crie os seguintes tópicos:
+   - 📝 **Chamados Abertos** - Para novos chamados
+   - 💬 **Mensagens e Atualizações** - Para comentários e interações
+   - 👤 **Atribuições** - Para quando chamados são atribuídos
+   - ✅ **Chamados Fechados** - Para chamados finalizados
+   - ❌ **Chamados Cancelados** - Para chamados cancelados
+3. Para obter o ID de cada tópico:
+   - Clique com botão direito no tópico
+   - Copie o link do tópico
+   - O número após o "/" no final do link é o ID do tópico
+
+### 4️⃣ Configurar no Sistema
 
 1. Acesse **Dashboard Administrativo > Configurações**
 2. Na seção **"Configurações de Notificações"**:
    - **Token do Bot**: Cole o token obtido no passo 1
    - **ID do Grupo**: Digite o ID do grupo (deve começar com -)
+   - **IDs dos Tópicos**: Preencha os IDs dos tópicos criados (opcional)
 3. Clique em **"Testar Conexão"** para verificar se tudo está funcionando
 4. Se o teste der certo, clique em **"Salvar Configurações"**
 
 ## 🎯 Funcionalidades
 
 ### Notificações Automáticas
-O sistema enviará notificações para o grupo do Telegram quando:
+O sistema enviará notificações organizadas por tópicos:
 
-- ✅ **Novo chamado** for criado
-- 👤 **Chamado for atribuído** a um responsável
-- 🔄 **Status do chamado** for alterado
-- 🔓 **Chamado for reaberto**
-- 📝 **Nova resposta** for adicionada
+#### 📝 Tópico: Chamados Abertos
+- ✅ **Novo chamado** criado
+- 🔓 **Chamado reaberto**
+
+#### 💬 Tópico: Mensagens e Atualizações
+- 📝 **Nova resposta** de usuário
+- 💬 **Nova resposta** do suporte
+- 🔄 **Atualizações** de status
+
+#### 👤 Tópico: Atribuições
+- 👤 **Chamado atribuído** (com nome do responsável)
+
+#### ✅ Tópico: Chamados Fechados
+- ✅ **Chamado resolvido**
+- 🔒 **Chamado fechado**
+
+#### ❌ Tópico: Chamados Cancelados
+- ❌ **Chamado cancelado** pelo gerente
 
 ### Formato das Mensagens
-As mensagens incluem:
-- 🆔 **ID do chamado**
-- 👤 **Nome do usuário**
-- 📋 **Tipo do chamado**
-- ⚡ **Prioridade**
-- 📝 **Assunto**
-- 🔄 **Tipo de evento**
+As mensagens são formatadas com informações detalhadas:
+
+**Exemplo - Novo Chamado:**
+```
+📨 Novo Chamado Criado
+
+ID: #123
+Usuário: João Silva
+Tipo: Suporte Técnico
+Prioridade: Alta
+Assunto: Problema com sistema
+Evento: created
+```
+
+**Exemplo - Atribuição:**
+```
+👤 Chamado Atribuído
+
+ID: #123
+Responsável: Maria Santos
+Tipo: Suporte Técnico
+Prioridade: Alta
+Assunto: Problema com sistema
+Usuário: João Silva
+```
 
 ## 🔒 Segurança
 
 - ⚠️ **Token do bot**: Mantenha sempre seguro, não compartilhe
 - 🔐 **Grupo privado**: Recomendamos usar um grupo privado apenas para admins
 - 👥 **Permissões**: Certifique-se de que apenas administradores tenham acesso
+- 📝 **Tópicos**: Use tópicos para organizar as notificações por categoria
+- 🤖 **Bot**: O bot precisa ter permissão para enviar mensagens em todos os tópicos
 
 ## 🆘 Solução de Problemas
 

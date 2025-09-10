@@ -51,20 +51,42 @@ def generate_password(length=8):
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def send_telegram_notification(message):
+def send_telegram_notification(message, event_type='general'):
     """Envia notificação via Telegram usando bot e grupo configurados"""
     try:
         conn = get_db_connection()
-        bot_token_row = conn.execute('SELECT value FROM settings WHERE key = ?', ('telegram_bot_token',)).fetchone()
-        group_id_row = conn.execute('SELECT value FROM settings WHERE key = ?', ('telegram_group_id',)).fetchone()
+        # Get all telegram settings at once
+        telegram_settings = {}
+        settings_keys = ['telegram_bot_token', 'telegram_group_id', 'telegram_topic_new_tickets', 
+                        'telegram_topic_messages', 'telegram_topic_assignments', 'telegram_topic_closed', 'telegram_topic_cancelled']
+        
+        for key in settings_keys:
+            row = conn.execute('SELECT value FROM settings WHERE key = ?', (key,)).fetchone()
+            telegram_settings[key] = row['value'] if row else ''
+        
         conn.close()
         
-        if not bot_token_row or not group_id_row or not bot_token_row['value'] or not group_id_row['value']:
+        bot_token = telegram_settings['telegram_bot_token']
+        group_id = telegram_settings['telegram_group_id']
+        
+        # Determine topic ID based on event type
+        topic_id = None
+        if event_type == 'created' and telegram_settings['telegram_topic_new_tickets']:
+            topic_id = telegram_settings['telegram_topic_new_tickets']
+        elif event_type == 'assigned' and telegram_settings['telegram_topic_assignments']:
+            topic_id = telegram_settings['telegram_topic_assignments']
+        elif event_type in ['status_changed', 'response_admin', 'response_user'] and telegram_settings['telegram_topic_messages']:
+            topic_id = telegram_settings['telegram_topic_messages']
+        elif event_type in ['resolved', 'closed'] and telegram_settings['telegram_topic_closed']:
+            topic_id = telegram_settings['telegram_topic_closed']
+        elif event_type == 'cancelled' and telegram_settings['telegram_topic_cancelled']:
+            topic_id = telegram_settings['telegram_topic_cancelled']
+        elif event_type == 'reopened' and telegram_settings['telegram_topic_new_tickets']:
+            topic_id = telegram_settings['telegram_topic_new_tickets']
+        
+        if not bot_token or not group_id:
             print("Configurações do Telegram não encontradas")
             return False
-            
-        bot_token = bot_token_row['value']
-        group_id = group_id_row['value']
         
         import requests
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -73,6 +95,10 @@ def send_telegram_notification(message):
             'text': message,
             'parse_mode': 'HTML'
         }
+        
+        # Add topic ID if specified
+        if topic_id:
+            data['message_thread_id'] = int(topic_id)
         
         response = requests.post(url, data=data, timeout=10)
         if response.status_code == 200:
@@ -174,7 +200,12 @@ def ensure_schema_and_password_hash():
             ('support_email', 'suporte@logverse.com'),
             ('support_phone', '(11) 1234-5678'),
             ('telegram_bot_token', ''),
-            ('telegram_group_id', '')
+            ('telegram_group_id', ''),
+            ('telegram_topic_new_tickets', ''),
+            ('telegram_topic_messages', ''),
+            ('telegram_topic_assignments', ''),
+            ('telegram_topic_closed', ''),
+            ('telegram_topic_cancelled', '')
         ]
         for k, v in defaults:
             cur.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', (k, v))
@@ -236,7 +267,7 @@ def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
             message += f"<b>Evento:</b> {event_type}"
             
             try:
-                send_telegram_notification(message)
+                send_telegram_notification(message, event_type)
             except Exception as e:
                 print(f"Erro ao enviar Telegram: {str(e)}")
                 
@@ -837,11 +868,18 @@ def api_admin_update_ticket_status(ticket_id):
     # Notify user about status change
     t = conn.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
     if t:
-        if status in ['Resolvido', 'Fechado', 'Rejeitado']:
+        # Determine event type based on status
+        event_type = 'status_changed'
+        if status in ['Resolvido', 'Fechado']:
+            event_type = 'closed'
             log_event(t['user_id'], f"Seu ticket #{ticket_id} foi concluído.", ticket_id)
+        elif status == 'Cancelado':
+            event_type = 'cancelled'
+            log_event(t['user_id'], f"Seu ticket #{ticket_id} foi cancelado.", ticket_id)
         else:
             log_event(t['user_id'], f"O status do seu ticket #{ticket_id} foi alterado para {status}.", ticket_id)
-        notify_user_ticket_update(t['user_id'], dict(t), 'status_changed')
+        
+        notify_user_ticket_update(t['user_id'], dict(t), event_type)
     conn.close()
     
     return jsonify({'success': True})
@@ -913,12 +951,40 @@ def api_create_ticket_response(ticket_id):
     if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
         log_event(ticket['user_id'], f"O suporte respondeu ao seu ticket #{ticket_id}.", ticket_id)
         notify_user_ticket_update(ticket['user_id'], dict(ticket), 'response_admin')
+        
+        # Send Telegram notification for admin response
+        try:
+            admin_name = session.get('user_name', 'Administrador')
+            response_message = f"\U0001F4AC <b>Nova Resposta do Suporte</b>\n\n"
+            response_message += f"<b>ID:</b> #{ticket_id}\n"
+            response_message += f"<b>Respondido por:</b> {admin_name}\n"
+            response_message += f"<b>Tipo:</b> {ticket.get('type', '')}\n"
+            response_message += f"<b>Usuário:</b> {ticket.get('user_name', 'Usuário')}\n"
+            response_message += f"<b>Mensagem:</b> {message[:100]}{'...' if len(message) > 100 else ''}"
+            
+            send_telegram_notification(response_message, 'response_admin')
+        except Exception as e:
+            print(f"Erro ao enviar notificação de resposta admin: {str(e)}")
     else:
         # Notify all admins and managers
         staff_users = conn.execute("SELECT id FROM users WHERE is_admin = 1").fetchall()
         for staff in staff_users:
             log_event(staff['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
             push_event(staff['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': dict(ticket)})
+        
+        # Send Telegram notification for user response
+        try:
+            user_name = ticket.get('user_name', 'Usuário')
+            response_message = f"\U0001F4E8 <b>Nova Resposta do Usuário</b>\n\n"
+            response_message += f"<b>ID:</b> #{ticket_id}\n"
+            response_message += f"<b>Usuário:</b> {user_name}\n"
+            response_message += f"<b>Tipo:</b> {ticket.get('type', '')}\n"
+            response_message += f"<b>Prioridade:</b> {ticket.get('priority', '')}\n"
+            response_message += f"<b>Mensagem:</b> {message[:100]}{'...' if len(message) > 100 else ''}"
+            
+            send_telegram_notification(response_message, 'response_user')
+        except Exception as e:
+            print(f"Erro ao enviar notificação de resposta usuário: {str(e)}")
 
     conn.close()
     return jsonify({'success': True, 'response_id': cur.lastrowid})
@@ -937,7 +1003,12 @@ def api_admin_get_settings():
         'support_email': data.get('support_email', ''),
         'support_phone': data.get('support_phone', ''),
         'telegram_bot_token': data.get('telegram_bot_token', ''),
-        'telegram_group_id': data.get('telegram_group_id', '')
+        'telegram_group_id': data.get('telegram_group_id', ''),
+        'telegram_topic_new_tickets': data.get('telegram_topic_new_tickets', ''),
+        'telegram_topic_messages': data.get('telegram_topic_messages', ''),
+        'telegram_topic_assignments': data.get('telegram_topic_assignments', ''),
+        'telegram_topic_closed': data.get('telegram_topic_closed', ''),
+        'telegram_topic_cancelled': data.get('telegram_topic_cancelled', '')
     })
 
 @app.route('/api/admin/settings', methods=['PUT'])
@@ -945,7 +1016,7 @@ def api_admin_update_settings():
     if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     data = request.get_json() or {}
-    allowed_keys = {'company_name', 'support_email', 'support_phone', 'telegram_bot_token', 'telegram_group_id'}
+    allowed_keys = {'company_name', 'support_email', 'support_phone', 'telegram_bot_token', 'telegram_group_id', 'telegram_topic_new_tickets', 'telegram_topic_messages', 'telegram_topic_assignments', 'telegram_topic_closed', 'telegram_topic_cancelled'}
     conn = get_db_connection()
     cur = conn.cursor()
     for k in allowed_keys:
@@ -1082,6 +1153,20 @@ def api_admin_assign_ticket(ticket_id):
         
         # Notificar o administrador atribuído
         log_event(assigned_to, f"Você foi designado para o ticket #{ticket_id}.", ticket_id)
+        
+        # Send special assignment notification to Telegram
+        try:
+            assignment_message = f"\U0001F464 <b>Chamado Atribuído</b>\n\n"
+            assignment_message += f"<b>ID:</b> #{ticket_id}\n"
+            assignment_message += f"<b>Responsável:</b> {assigned_user['name']}\n"
+            assignment_message += f"<b>Tipo:</b> {ticket.get('type', '')}\n"
+            assignment_message += f"<b>Prioridade:</b> {ticket.get('priority', '')}\n"
+            assignment_message += f"<b>Assunto:</b> {ticket.get('subject', ticket.get('description', ''))[:50]}\n"
+            assignment_message += f"<b>Usuário:</b> {ticket.get('user_name', 'Usuário')}"
+            
+            send_telegram_notification(assignment_message, 'assigned')
+        except Exception as e:
+            print(f"Erro ao enviar notificação de atribuição: {str(e)}")
         
         # Push notifications
         notify_user_ticket_update(ticket['user_id'], dict(ticket), 'assigned')

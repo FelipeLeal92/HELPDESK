@@ -1439,12 +1439,17 @@ const AdminDashboard = (function() {
                 e.preventDefault();
                 const telegram_bot_token = document.getElementById('telegram-bot-token').value.trim();
                 const telegram_group_id = document.getElementById('telegram-group-id').value.trim();
+                const telegram_topic_new_tickets = document.getElementById('topic-new-tickets').value.trim();
+                const telegram_topic_messages = document.getElementById('topic-messages').value.trim();
+                const telegram_topic_assignments = document.getElementById('topic-assignments').value.trim();
+                const telegram_topic_closed = document.getElementById('topic-closed').value.trim();
+                const telegram_topic_cancelled = document.getElementById('topic-cancelled').value.trim();
                 
                 try {
                     const r = await fetch('/api/admin/settings', {
                         method: 'PUT', 
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ telegram_bot_token, telegram_group_id })
+                        body: JSON.stringify({ telegram_bot_token, telegram_group_id, telegram_topic_new_tickets, telegram_topic_messages, telegram_topic_assignments, telegram_topic_closed, telegram_topic_cancelled })
                     });
                     const data = await r.json().catch(() => null);
                     if (!r.ok || (data && data.error)) throw new Error((data && data.error) || 'Erro ao salvar configurações do Telegram.');
@@ -1505,6 +1510,11 @@ const AdminDashboard = (function() {
                 if (confirm('Tem certeza que deseja limpar as configurações do Telegram?')) {
                     document.getElementById('telegram-bot-token').value = '';
                     document.getElementById('telegram-group-id').value = '';
+                    document.getElementById('topic-new-tickets').value = '';
+                    document.getElementById('topic-messages').value = '';
+                    document.getElementById('topic-assignments').value = '';
+                    document.getElementById('topic-closed').value = '';
+                    document.getElementById('topic-cancelled').value = '';
                     document.getElementById('telegram-status').classList.add('hidden');
                 }
             });
@@ -1524,6 +1534,21 @@ const AdminDashboard = (function() {
             }
             if (data.telegram_group_id) {
                 document.getElementById('telegram-group-id').value = data.telegram_group_id;
+            }
+            if (data.telegram_topic_new_tickets) {
+                document.getElementById('topic-new-tickets').value = data.telegram_topic_new_tickets;
+            }
+            if (data.telegram_topic_messages) {
+                document.getElementById('topic-messages').value = data.telegram_topic_messages;
+            }
+            if (data.telegram_topic_assignments) {
+                document.getElementById('topic-assignments').value = data.telegram_topic_assignments;
+            }
+            if (data.telegram_topic_closed) {
+                document.getElementById('topic-closed').value = data.telegram_topic_closed;
+            }
+            if (data.telegram_topic_cancelled) {
+                document.getElementById('topic-cancelled').value = data.telegram_topic_cancelled;
             }
         } catch (error) {
             console.error('Error loading Telegram settings:', error);
