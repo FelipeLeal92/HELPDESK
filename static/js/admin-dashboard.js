@@ -232,6 +232,24 @@ const AdminDashboard = (function() {
     function loadUserMessagesSection() {
         loadTicketsForMessageSelect();
     }
+    
+    function loadAdministrators() {
+        fetch('/api/admin/administrators')
+            .then(response => response.json())
+            .then(administrators => {
+                const select = document.getElementById('assign-admin-select');
+                if (select) {
+                    select.innerHTML = '<option value="">Selecione um administrador</option>';
+                    administrators.forEach(admin => {
+                        const option = document.createElement('option');
+                        option.value = admin.id;
+                        option.textContent = `${admin.name} (${admin.email})`;
+                        select.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading administrators:', error));
+    }
 
     function loadTicketsForMessageSelect() {
         fetch('/api/tickets')
@@ -301,6 +319,7 @@ const AdminDashboard = (function() {
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <span class="px-2 py-1 text-xs rounded-full ${Common.getStatusColor(ticket.status)}">${ticket.status}</span>
+                    ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${ticket.assigned_to_name}</span>` : ''}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(ticket.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -316,6 +335,9 @@ const AdminDashboard = (function() {
                         </button>
                         <button class="close-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Finalizar" data-ticket-id="${ticket.id}">
                             <span class="material-symbols-outlined text-green-600">check_circle</span>
+                        </button>
+                        <button class="assign-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Atribuir" data-ticket-id="${ticket.id}">
+                            <span class="material-symbols-outlined text-blue-600">person_add</span>
                         </button>
                         <button class="view-messages-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver Mensagens" onclick="AdminDashboard.showSection('user-messages'); AdminDashboard.loadUserMessages(${ticket.id}); document.getElementById('current-message-ticket-id').textContent = '${ticket.id}';">
                             <span class="material-symbols-outlined text-purple-600">message</span>
@@ -361,6 +383,7 @@ const AdminDashboard = (function() {
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <span class="px-2 py-1 text-xs rounded-full ${Common.getPriorityColor(ticket.priority)}">${ticket.priority}</span>
+                    ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${ticket.assigned_to_name}</span>` : ''}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(ticket.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -420,6 +443,7 @@ const AdminDashboard = (function() {
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
+                        ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${ticket.assigned_to_name}</span>` : ''}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.closed_at ? Common.formatDate(ticket.closed_at) : 'N/A'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${diffDays}d ${diffHours}h</td>
@@ -639,6 +663,20 @@ const AdminDashboard = (function() {
             });
         });
         
+        // Assign ticket to admin (from main dashboard)
+        document.querySelectorAll('.assign-ticket-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const ticketId = this.getAttribute('data-ticket-id');
+                document.getElementById('assign-ticket-id').textContent = ticketId;
+                document.getElementById('assign-ticket-id-input').value = ticketId;
+                
+                // Load administrators for the select dropdown
+                loadAdministrators();
+                
+                Common.showModal('assign-ticket-modal');
+            });
+        });
+        
         // Close ticket
         document.querySelectorAll('.close-ticket-btn').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -838,8 +876,8 @@ const AdminDashboard = (function() {
                 // Limpar opções existentes, mantendo apenas a opção padrão
                 adminSelect.innerHTML = '<option value="">Selecione um administrador</option>';
                 
-                // Filtrar apenas administradores
-                const admins = usersData.filter(user => user.is_admin);
+                // Filtrar apenas administradores e managers
+                const admins = usersData.filter(user => user.role === 'admin' || user.role === 'manager');
                 
                 if (admins.length === 0) {
                     adminSelect.innerHTML += '<option disabled>Nenhum administrador encontrado</option>';
@@ -1277,12 +1315,28 @@ const AdminDashboard = (function() {
                     return;
                 }
                 
-                // Simulação de resposta bem-sucedida para demonstração
-                setTimeout(() => {
-                    Common.showToast('Chamado atribuído com sucesso');
-                    Common.hideModal('assign-ticket-modal');
-                    loadOpenTickets();
-                }, 500);
+                fetch(`/api/admin/tickets/${ticketId}/assign`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ assigned_to: adminId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Common.showToast(`Chamado atribuído a ${data.assigned_to} com sucesso`);
+                        Common.hideModal('assign-ticket-modal');
+                        loadOpenTickets();
+                        loadRecentTickets();
+                    } else {
+                        Common.showToast(data.error || 'Erro ao atribuir chamado');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error assigning ticket:', error);
+                    Common.showToast('Erro ao atribuir chamado');
+                });
             });
         }
         

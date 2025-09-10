@@ -414,9 +414,10 @@ def api_get_tickets():
     try:
         if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
             tickets = conn.execute('''
-                SELECT t.*, u.name as user_name 
+                SELECT t.*, u.name as user_name, a.name as assigned_to_name 
                 FROM tickets t 
                 LEFT JOIN users u ON t.user_id = u.id 
+                LEFT JOIN users a ON t.assigned_to = a.id
                 ORDER BY t.created_at DESC
             ''').fetchall()
         else:
@@ -570,9 +571,10 @@ def api_admin_tickets_recent():
     
     conn = get_db_connection()
     tickets = conn.execute('''
-        SELECT t.*, u.name as user_name 
+        SELECT t.*, u.name as user_name, a.name as assigned_to_name 
         FROM tickets t 
         LEFT JOIN users u ON t.user_id = u.id 
+        LEFT JOIN users a ON t.assigned_to = a.id
         ORDER BY t.created_at DESC 
         LIMIT 10
     ''').fetchall()
@@ -776,7 +778,7 @@ def api_get_ticket_responses(ticket_id):
         conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
-    # Only allow admin, manager or the ticket owner to view responses
+# Only allow: ticket owner OR any staff (admin/manager) to view responses
     if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or ticket['user_id'] == session['user_id']):
         conn.close()
         return jsonify({'error': 'Forbidden'}), 403
@@ -808,8 +810,16 @@ def api_create_ticket_response(ticket_id):
         conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
-    # Only allow admin, manager or the ticket owner to add responses
-    if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or ticket['user_id'] == session['user_id']):
+# Only allow: ticket owner OR assigned admin/manager (if assigned), otherwise forbid
+    is_owner = (ticket['user_id'] == session['user_id'])
+    is_staff = (session.get('is_admin') or session.get('user_role') in ['admin', 'manager'])
+    assigned_to = ticket.get('assigned_to') if isinstance(ticket, dict) else ticket['assigned_to']
+    if is_staff and assigned_to:
+        # Staff can only respond if they are assigned to this ticket
+        if session['user_id'] != assigned_to:
+            conn.close()
+            return jsonify({'error': 'Somente o administrador designado pode responder a este ticket'}), 403
+    elif not (is_owner or is_staff):
         conn.close()
         return jsonify({'error': 'Forbidden'}), 403
 
@@ -863,6 +873,76 @@ def api_admin_update_settings():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+@app.route('/api/admin/administrators', methods=['GET'])
+def api_get_administrators():
+    """API endpoint to get list of administrators for ticket assignment"""
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    conn = get_db_connection()
+    administrators = conn.execute('''
+        SELECT id, name, email
+        FROM users 
+        WHERE role IN ('admin', 'manager') 
+        ORDER BY name
+    ''').fetchall()
+    conn.close()
+    
+    return jsonify([dict(admin) for admin in administrators])
+
+@app.route('/api/admin/tickets/<int:ticket_id>/assign', methods=['PUT'])
+def api_admin_assign_ticket(ticket_id):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json()
+    assigned_to = data.get('assigned_to')
+    
+    if not assigned_to:
+        return jsonify({'error': 'ID do administrador é obrigatório'}), 400
+    
+    conn = get_db_connection()
+    try:
+        # Verificar se o ticket existe
+        ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+        if not ticket:
+            return jsonify({'error': 'Ticket não encontrado'}), 404
+        
+        # Verificar se o usuário a ser atribuído é admin ou manager
+        assigned_user = conn.execute('SELECT * FROM users WHERE id = ? AND (role = "admin" OR role = "manager")', (assigned_to,)).fetchone()
+        if not assigned_user:
+            return jsonify({'error': 'Usuário não é um administrador ou gerente'}), 400
+        
+        # Atribuir o ticket
+        conn.execute('UPDATE tickets SET assigned_to = ?, updated_at = datetime("now") WHERE id = ?',
+                     (assigned_to, ticket_id))
+        conn.commit()
+        
+        # Notificar o usuário sobre a atribuição
+        log_event(ticket['user_id'], f"Seu ticket #{ticket_id} foi atribuído ao administrador {assigned_user['name']}.", ticket_id)
+        
+        # Notificar o administrador atribuído
+        log_event(assigned_to, f"Você foi designado para o ticket #{ticket_id}.", ticket_id)
+        
+        # Push notifications
+        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'assigned')
+        push_event(assigned_to, {
+            'type': 'ticket_update',
+            'event': 'assigned_to_you',
+            'ticket': {
+                'id': ticket['id'],
+                'subject': ticket['subject'],
+                'priority': ticket['priority']
+            }
+        })
+        
+        return jsonify({'success': True, 'assigned_to': assigned_user['name']})
+    except Exception as e:
+        print(f"Error assigning ticket: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
+    finally:
+        conn.close()
 
 # Adicione estas rotas no app.py
 
