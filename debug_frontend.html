@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Frontend - HelpDesk</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">🔍 Debug Frontend - Dashboard Admin</h1>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">📊 Teste das APIs</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onclick="testAPI('/api/admin/stats', 'stats-result')" 
+                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Testar Stats
+                </button>
+                <button onclick="testAPI('/api/admin/tickets/recent', 'recent-result')" 
+                        class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Testar Tickets Recentes
+                </button>
+                <button onclick="testAPI('/api/admin/users', 'users-result')" 
+                        class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                    Testar Usuários
+                </button>
+                <button onclick="testAPI('/api/tickets', 'tickets-result')" 
+                        class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">
+                    Testar Todos Tickets
+                </button>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">📋 Resultados dos Testes</h2>
+            <div class="space-y-4">
+                <div>
+                    <h3 class="font-medium">Stats:</h3>
+                    <pre id="stats-result" class="bg-gray-100 p-2 rounded text-sm overflow-auto">Clique no botão para testar</pre>
+                </div>
+                <div>
+                    <h3 class="font-medium">Tickets Recentes:</h3>
+                    <pre id="recent-result" class="bg-gray-100 p-2 rounded text-sm overflow-auto">Clique no botão para testar</pre>
+                </div>
+                <div>
+                    <h3 class="font-medium">Usuários:</h3>
+                    <pre id="users-result" class="bg-gray-100 p-2 rounded text-sm overflow-auto">Clique no botão para testar</pre>
+                </div>
+                <div>
+                    <h3 class="font-medium">Todos os Tickets:</h3>
+                    <pre id="tickets-result" class="bg-gray-100 p-2 rounded text-sm overflow-auto">Clique no botão para testar</pre>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">🔧 Teste do AdminDashboard.js</h2>
+            <div class="space-y-2">
+                <button onclick="testAdminDashboard()" 
+                        class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                    Testar AdminDashboard
+                </button>
+                <div id="admin-dashboard-result" class="bg-gray-100 p-2 rounded text-sm"></div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">📝 Console Log</h2>
+            <div id="console-log" class="bg-black text-green-400 p-4 rounded font-mono text-sm h-64 overflow-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        // Capturar logs do console
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        const consoleDiv = document.getElementById('console-log');
+        
+        function addToConsole(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="text-gray-400">[${timestamp}]</span> <span class="text-${type === 'error' ? 'red' : type === 'warn' ? 'yellow' : 'green'}-400">[${type.toUpperCase()}]</span> ${message}`;
+            consoleDiv.appendChild(logEntry);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsole('log', args.join(' '));
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsole('error', args.join(' '));
+        };
+        
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addToConsole('warn', args.join(' '));
+        };
+        
+        // Função para testar APIs
+        async function testAPI(endpoint, resultId) {
+            const resultElement = document.getElementById(resultId);
+            resultElement.textContent = 'Testando...';
+            
+            try {
+                console.log(`Testando endpoint: ${endpoint}`);
+                const response = await fetch(endpoint);
+                console.log(`Status: ${response.status}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultElement.textContent = JSON.stringify(data, null, 2);
+                    console.log(`Sucesso: ${endpoint}`, data);
+                } else {
+                    const errorText = await response.text();
+                    resultElement.textContent = `Erro ${response.status}: ${errorText}`;
+                    console.error(`Erro ${response.status} em ${endpoint}:`, errorText);
+                }
+            } catch (error) {
+                resultElement.textContent = `Erro de rede: ${error.message}`;
+                console.error(`Erro de rede em ${endpoint}:`, error);
+            }
+        }
+        
+        // Função para testar AdminDashboard
+        function testAdminDashboard() {
+            const resultElement = document.getElementById('admin-dashboard-result');
+            
+            try {
+                console.log('Testando se AdminDashboard está disponível...');
+                
+                if (typeof AdminDashboard !== 'undefined') {
+                    resultElement.innerHTML = '<span class="text-green-600">✅ AdminDashboard está carregado</span>';
+                    console.log('AdminDashboard encontrado:', AdminDashboard);
+                    
+                    // Testar métodos específicos
+                    if (typeof AdminDashboard.loadDashboardData === 'function') {
+                        console.log('✅ loadDashboardData está disponível');
+                    } else {
+                        console.error('❌ loadDashboardData não está disponível');
+                    }
+                    
+                    if (typeof AdminDashboard.showSection === 'function') {
+                        console.log('✅ showSection está disponível');
+                    } else {
+                        console.error('❌ showSection não está disponível');
+                    }
+                    
+                } else {
+                    resultElement.innerHTML = '<span class="text-red-600">❌ AdminDashboard não está carregado</span>';
+                    console.error('AdminDashboard não encontrado');
+                }
+            } catch (error) {
+                resultElement.innerHTML = `<span class="text-red-600">❌ Erro: ${error.message}</span>`;
+                console.error('Erro ao testar AdminDashboard:', error);
+            }
+        }
+        
+        // Testar automaticamente quando a página carregar
+        window.addEventListener('load', function() {
+            console.log('Página carregada, iniciando testes automáticos...');
+            testAdminDashboard();
+        });
+        
+        // Capturar erros não tratados
+        window.addEventListener('error', function(event) {
+            console.error('Erro JavaScript:', event.error);
+        });
+        
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Promise rejeitada:', event.reason);
+        });
+    </script>
+    
+    <!-- Carregar o AdminDashboard para teste -->
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/admin-dashboard.js"></script>
+</body>
+</html>

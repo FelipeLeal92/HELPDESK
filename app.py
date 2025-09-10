@@ -315,16 +315,15 @@ def login():
         user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
         conn.close()
         if user and user['password'] == hash_password(password):
-            # Determinar privilégios com base nas colunas disponíveis
+            # Determinar privilégios com base na coluna de função (role)
             user_keys = set(user.keys())
-            is_admin = False
-            role = 'user'
-            if 'is_admin' in user_keys:
-                is_admin = bool(user['is_admin'])
-                role = 'admin' if is_admin else 'user'
-            elif 'role' in user_keys:
-                role = (user['role'] or 'user')
-                is_admin = role in ['admin', 'manager']
+            role = 'user'  # Padrão
+            if 'role' in user_keys and user['role']:
+                role = user['role']
+            elif 'is_admin' in user_keys and user['is_admin']:
+                role = 'admin'
+            
+            is_admin = role in ['admin', 'manager']
 
             # Definir sessão
             session['user_id'] = user['id']
@@ -770,7 +769,7 @@ def api_user_get_settings():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     conn = get_db_connection()
-    user = conn.execute('''SELECT id, name, email, phone, 
+    user = conn.execute('''SELECT id, name, email, phone, role,
                                   COALESCE(email_updates,1) AS email_updates,
                                   COALESCE(sms_urgent,0) AS sms_urgent,
                                   COALESCE(push_realtime,1) AS push_realtime
@@ -1220,16 +1219,88 @@ def api_admin_assign_ticket(ticket_id):
     finally:
         conn.close()
 
+@app.route('/api/admin/tickets/<int:ticket_id>/cancel', methods=['PUT'])
+def api_admin_cancel_ticket(ticket_id):
+    """Cancela um ticket (apenas gerentes)"""
+    if 'user_id' not in session or session.get('user_role') != 'manager':
+        return jsonify({'error': 'Apenas gerentes podem cancelar tickets'}), 403
+    
+    conn = get_db_connection()
+    try:
+        # Buscar ticket com nome do usuário
+        ticket = conn.execute('''
+            SELECT t.*, u.name as user_name
+            FROM tickets t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.id = ?
+        ''', (ticket_id,)).fetchone()
+        
+        if not ticket:
+            return jsonify({'error': 'Ticket não encontrado'}), 404
+        
+        # Verificar se o ticket não está já cancelado
+        if ticket['status'] == 'Cancelado':
+            return jsonify({'error': 'Ticket já está cancelado'}), 400
+        
+        # Cancelar ticket
+        conn.execute('UPDATE tickets SET status = "Cancelado", updated_at = datetime("now") WHERE id = ?', (ticket_id,))
+        conn.commit()
+        
+        # Log e notificações
+        manager_name = session.get('user_name', 'Gerente')
+        log_event(ticket['user_id'], f"Seu ticket #{ticket_id} foi cancelado pelo gerente {manager_name}.", ticket_id)
+        
+        # Notificar usuário
+        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'cancelled')
+        
+        # Enviar notificação Telegram
+        try:
+            user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
+            ticket_type = ticket['type'] if ticket['type'] else 'N/A'
+            ticket_priority = ticket['priority'] if ticket['priority'] else 'N/A'
+            ticket_subject = ticket['subject'] if ticket['subject'] else (ticket['description'][:50] if ticket['description'] else 'N/A')
+            
+            cancel_message = f"\U0000274C <b>Chamado Cancelado</b>\n\n"
+            cancel_message += f"<b>ID:</b> #{ticket_id}\n"
+            cancel_message += f"<b>Cancelado por:</b> {manager_name}\n"
+            cancel_message += f"<b>Usuário:</b> {user_name}\n"
+            cancel_message += f"<b>Tipo:</b> {ticket_type}\n"
+            cancel_message += f"<b>Prioridade:</b> {ticket_priority}\n"
+            cancel_message += f"<b>Assunto:</b> {ticket_subject}"
+            
+            send_telegram_notification(cancel_message, 'cancelled')
+        except Exception as e:
+            print(f"Erro ao enviar notificação de cancelamento: {str(e)}")
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Erro ao cancelar ticket: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
+    finally:
+        conn.close()
+
 @app.route('/api/admin/tickets/<int:ticket_id>/reopen', methods=['PUT'])
 def api_admin_reopen_ticket(ticket_id):
-    """Reabre um ticket fechado e notifica responsável, quem fechou, gerentes e o usuário dono."""
+    """Reabre um ticket fechado ou cancelado (apenas gerentes para tickets cancelados)"""
     if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     conn = get_db_connection()
     try:
-        ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+        # Buscar ticket com nome do usuário
+        ticket = conn.execute('''
+            SELECT t.*, u.name as user_name
+            FROM tickets t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.id = ?
+        ''', (ticket_id,)).fetchone()
+        
         if not ticket:
             return jsonify({'error': 'Ticket não encontrado'}), 404
+        
+        # Se o ticket foi cancelado, apenas gerentes podem reabrir
+        if ticket['status'] == 'Cancelado' and session.get('user_role') != 'manager':
+            return jsonify({'error': 'Apenas gerentes podem reabrir tickets cancelados'}), 403
         # Atualiza status para Aberto, limpa fechamento e quem fechou
         conn.execute("UPDATE tickets SET status = 'Aberto', updated_at = datetime('now'), closed_at = NULL, closed_by = NULL WHERE id = ?", (ticket_id,))
         conn.commit()
@@ -1379,6 +1450,11 @@ def api_delete_ticket_status(status_id):
     conn.close()
     
     return jsonify({'success': True})
+
+@app.route('/debug')
+def debug_frontend():
+    """Página de debug para testar o frontend"""
+    return send_from_directory('.', 'debug_frontend.html')
 
 # Inicialização da aplicação
 if __name__ == '__main__':

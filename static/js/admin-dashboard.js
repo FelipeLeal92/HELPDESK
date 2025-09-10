@@ -11,6 +11,7 @@ const AdminDashboard = (function() {
     let recentTicketsView = [];
     let currentMessageTicket = null;
     let users = [];
+    let currentUserRole = null;
 
     let sortState = {
     recent: { column: null, direction: 'asc' },
@@ -95,6 +96,38 @@ const AdminDashboard = (function() {
         updateClosedTicketsTable(tickets);
     }
 }
+    // Função para obter o papel do usuário atual
+    function getCurrentUserRole() {
+        return currentUserRole;
+    }
+    
+    // Função para navegar para a aba de mensagens com ticket pré-selecionado
+    function navigateToMessages(ticketId) {
+        // Navegar para a seção de mensagens
+        showSection('user-messages');
+        
+        // Aguardar um momento para garantir que a seção foi carregada
+        setTimeout(() => {
+            // Selecionar o ticket no dropdown
+            const select = document.getElementById('message-ticket-select');
+            if (select) {
+                select.value = ticketId;
+                // Disparar evento de mudança para carregar as mensagens
+                const event = new Event('change');
+                select.dispatchEvent(event);
+            }
+            
+            // Atualizar o ID do ticket atual
+            const currentTicketSpan = document.getElementById('current-message-ticket-id');
+            if (currentTicketSpan) {
+                currentTicketSpan.textContent = ticketId;
+            }
+            
+            // Carregar as mensagens do ticket
+            loadUserMessages(ticketId);
+        }, 100);
+    }
+    
     // Função de navegação entre seções
     function showSection(sectionName, event) {
         if (event) {
@@ -153,6 +186,7 @@ const AdminDashboard = (function() {
             loadUsers();
         } else if (sectionName === 'user-messages') {
             loadUserMessagesSection();
+            setupMessageSectionEventListeners();
         } else if (sectionName === 'settings') {
             bindAdminSettingsHandlers();
             initHelpCenterSettings();
@@ -199,7 +233,7 @@ const AdminDashboard = (function() {
         fetch('/api/tickets')
             .then(response => response.json())
             .then(tickets => {
-                closedTickets = tickets.filter(t => ['Resolvido', 'Fechado'].includes(t.status));
+                closedTickets = tickets.filter(t => ['Resolvido', 'Fechado', 'Cancelado'].includes(t.status));
                 updateClosedTicketsTable(closedTickets);
             })
             .catch(error => console.error('Error loading closed tickets:', error));
@@ -339,9 +373,13 @@ const AdminDashboard = (function() {
                         <button class="assign-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Atribuir" data-ticket-id="${ticket.id}">
                             <span class="material-symbols-outlined text-blue-600">person_add</span>
                         </button>
-                        <button class="view-messages-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver Mensagens" onclick="AdminDashboard.showSection('user-messages'); AdminDashboard.loadUserMessages(${ticket.id}); document.getElementById('current-message-ticket-id').textContent = '${ticket.id}';">
+                        <button class="view-messages-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver Mensagens" onclick="AdminDashboard.navigateToMessages(${ticket.id})">
                             <span class="material-symbols-outlined text-purple-600">message</span>
                         </button>
+                        ${getCurrentUserRole() === 'manager' ? `
+                        <button class="cancel-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Cancelar" data-ticket-id="${ticket.id}">
+                            <span class="material-symbols-outlined text-red-600">cancel</span>
+                        </button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -397,6 +435,10 @@ const AdminDashboard = (function() {
                         <button class="open-ticket-close-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Finalizar" data-ticket-id="${ticket.id}">
                             <span class="material-symbols-outlined text-green-600">check_circle</span>
                         </button>
+                        ${getCurrentUserRole() === 'manager' ? `
+                        <button class="cancel-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Cancelar" data-ticket-id="${ticket.id}">
+                            <span class="material-symbols-outlined text-red-600">cancel</span>
+                        </button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -452,9 +494,15 @@ const AdminDashboard = (function() {
                             <button class="admin-view-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver detalhes" data-ticket-id="${ticket.id}">
                                 <span class="material-symbols-outlined text-gray-600">visibility</span>
                             </button>
-                            <button class="reopen-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Reabrir" data-ticket-id="${ticket.id}">
-                                <span class="material-symbols-outlined text-blue-600">refresh</span>
-                            </button>
+                            ${
+                                (ticket.status !== 'Cancelado' || (ticket.status === 'Cancelado' && getCurrentUserRole() === 'manager'))
+                                ? `<button class="reopen-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Reabrir" data-ticket-id="${ticket.id}">
+                                        <span class="material-symbols-outlined text-blue-600">refresh</span>
+                                    </button>`
+                                : `<span class="p-1.5 rounded-full" title="Apenas gerentes podem reabrir tickets cancelados">
+                                        <span class="material-symbols-outlined text-gray-400">refresh</span>
+                                    </span>`
+                            }
                         </div>
                     </td>
                 </tr>
@@ -626,6 +674,22 @@ const AdminDashboard = (function() {
             `;
         });
     }
+    
+    // Função para detectar o papel do usuário
+    async function detectUserRole() {
+        try {
+            const response = await fetch('/api/user/settings');
+            if (!response.ok) {
+                throw new Error('Failed to fetch user settings');
+            }
+            const user = await response.json();
+            currentUserRole = user.role || 'user';
+        } catch (error) {
+            console.error('Could not detect user role:', error);
+            currentUserRole = 'user'; // Fallback to least privileged role
+        }
+        console.log('Current user role detected as:', currentUserRole);
+    }
 
     // Funções de eventos
     function addTicketActionEventListeners() {
@@ -716,6 +780,36 @@ const AdminDashboard = (function() {
                 Common.showModal('close-ticket-modal');
             });
         });
+
+        // Cancel ticket (managers only)
+        document.querySelectorAll('.cancel-ticket-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const ticketId = this.getAttribute('data-ticket-id');
+                if (confirm(`Tem certeza que deseja CANCELAR o chamado #${ticketId}? Esta ação só pode ser desfeita por um gerente.`)) {
+                    fetch(`/api/admin/tickets/${ticketId}/cancel`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Common.showToast(`Chamado #${ticketId} cancelado com sucesso`);
+                            loadDashboardData();
+                            loadOpenTickets();
+                            loadClosedTickets();
+                        } else {
+                            Common.showToast(data.error || 'Erro ao cancelar chamado');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error canceling ticket:', error);
+                        Common.showToast('Erro ao cancelar chamado');
+                    });
+                }
+            });
+        });
     }
 
     function addOpenTicketsEventListeners() {
@@ -752,6 +846,36 @@ const AdminDashboard = (function() {
                 document.getElementById('close-ticket-id-input').value = ticketId;
                 document.getElementById('close-ticket-note').value = '';
                 Common.showModal('close-ticket-modal');
+            });
+        });
+        
+        // Cancel ticket (managers only) - for open tickets
+        document.querySelectorAll('.cancel-ticket-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const ticketId = this.getAttribute('data-ticket-id');
+                if (confirm(`Tem certeza que deseja CANCELAR o chamado #${ticketId}? Esta ação só pode ser desfeita por um gerente.`)) {
+                    fetch(`/api/admin/tickets/${ticketId}/cancel`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Common.showToast(`Chamado #${ticketId} cancelado com sucesso`);
+                            loadDashboardData();
+                            loadOpenTickets();
+                            loadClosedTickets();
+                        } else {
+                            Common.showToast(data.error || 'Erro ao cancelar chamado');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error canceling ticket:', error);
+                        Common.showToast('Erro ao cancelar chamado');
+                    });
+                }
             });
         });
     }
@@ -1675,6 +1799,23 @@ const AdminDashboard = (function() {
             });
         }
     })
+    function setupMessageSectionEventListeners() {
+        // Event listener para o seletor de tickets
+        const messageTicketSelect = document.getElementById('message-ticket-select');
+        if (messageTicketSelect && !messageTicketSelect._listenerAdded) {
+            messageTicketSelect._listenerAdded = true;
+            messageTicketSelect.addEventListener('change', function() {
+                const ticketId = this.value;
+                document.getElementById('message-ticket-id').value = ticketId;
+                document.getElementById('current-message-ticket-id').textContent = ticketId || 'N/A';
+                loadUserMessages(ticketId);
+            });
+        }
+        
+        // Configurar o formulário de mensagens
+        setupMessageForm();
+    }
+    
     function setupMessageForm() {
         const form = document.getElementById('send-message-form');
         if (!form) return;
@@ -1725,11 +1866,15 @@ const AdminDashboard = (function() {
     }
 
     // Funções públicas
-    function init() {
+    async function init() {
+        // Detectar papel do usuário atual a partir do DOM ou fazer uma chamada para o servidor
+        await detectUserRole();
+        
         // Make helpers globally available for inline handlers
         window.showSection = showSection;
         window.hideModal = Common.hideModal;
         window.showModal = Common.showModal;
+        window.getCurrentUserRole = getCurrentUserRole;
         
         // Initialize dashboard
         showSection('dashboard');
@@ -1780,7 +1925,9 @@ const AdminDashboard = (function() {
         editUser,
         deleteUser,
         sortTable,
-        showAddUserModal // Expose the function globally
+        showAddUserModal, // Expose the function globally
+        navigateToMessages,
+        getCurrentUserRole
     };
 })();
 
