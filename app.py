@@ -141,6 +141,11 @@ def ensure_schema_and_password_hash():
         ]
         for k, v in defaults:
             cur.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', (k, v))
+        # Ensure tickets has closed_by column
+        cur.execute('PRAGMA table_info(tickets)')
+        tcols = {row['name'] for row in cur.fetchall()}
+        if 'closed_by' not in tcols:
+            cur.execute("ALTER TABLE tickets ADD COLUMN closed_by INTEGER")
         # Migrate plaintext passwords to hashed (sha256 hex)
         cur.execute('SELECT id, password FROM users')
         rows = cur.fetchall()
@@ -748,11 +753,25 @@ def api_admin_update_ticket_status(ticket_id):
     status = data.get('status')
     
     conn = get_db_connection()
+    
+    # Verificar se o ticket existe e obter informações de atribuição
+    ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    if not ticket:
+        conn.close()
+        return jsonify({'error': 'Ticket não encontrado'}), 404
+    
+    # Se o status for de finalização (Resolvido, Fechado, Rejeitado) e houver um responsável atribuído
+    if status in ['Resolvido', 'Fechado', 'Rejeitado'] and ticket['assigned_to']:
+        # Apenas o responsável atribuído pode finalizar o chamado
+        if session['user_id'] != ticket['assigned_to']:
+            conn.close()
+            return jsonify({'error': 'Somente o administrador responsável por este chamado pode finalizá-lo'}), 403
+    
     conn.execute('UPDATE tickets SET status = ?, updated_at = datetime("now") WHERE id = ?',
                  (status, ticket_id))
     
     if status in ['Resolvido', 'Fechado', 'Rejeitado']:
-        conn.execute('UPDATE tickets SET closed_at = datetime("now") WHERE id = ?', (ticket_id,))
+        conn.execute('UPDATE tickets SET closed_at = datetime("now"), closed_by = ? WHERE id = ?', (session['user_id'], ticket_id))
     
     conn.commit()
     # Notify user about status change
@@ -940,6 +959,46 @@ def api_admin_assign_ticket(ticket_id):
         return jsonify({'success': True, 'assigned_to': assigned_user['name']})
     except Exception as e:
         print(f"Error assigning ticket: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/tickets/<int:ticket_id>/reopen', methods=['PUT'])
+def api_admin_reopen_ticket(ticket_id):
+    """Reabre um ticket fechado e notifica responsável, quem fechou, gerentes e o usuário dono."""
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db_connection()
+    try:
+        ticket = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+        if not ticket:
+            return jsonify({'error': 'Ticket não encontrado'}), 404
+        # Atualiza status para Aberto, limpa fechamento e quem fechou
+        conn.execute("UPDATE tickets SET status = 'Aberto', updated_at = datetime('now'), closed_at = NULL, closed_by = NULL WHERE id = ?", (ticket_id,))
+        conn.commit()
+        # Notificações
+        user_id = ticket['user_id']
+        assigned_to = ticket['assigned_to']
+        closed_by = ticket['closed_by'] if 'closed_by' in ticket.keys() else None
+        # Notificar usuário dono
+        log_event(user_id, f"Seu ticket #{ticket_id} foi reaberto.", ticket_id)
+        notify_user_ticket_update(user_id, dict(ticket), 'reopened')
+        # Notificar responsável (se houver)
+        if assigned_to:
+            log_event(assigned_to, f"Ticket #{ticket_id} foi reaberto.", ticket_id)
+            push_event(assigned_to, {'type': 'ticket_update', 'event': 'reopened', 'ticket': {'id': ticket['id'], 'subject': ticket['subject'], 'priority': ticket['priority']}})
+        # Notificar quem fechou (se conhecido)
+        if closed_by:
+            log_event(closed_by, f"Ticket #{ticket_id} que você havia fechado foi reaberto.", ticket_id)
+            push_event(closed_by, {'type': 'ticket_update', 'event': 'reopened', 'ticket': {'id': ticket['id'], 'subject': ticket['subject'], 'priority': ticket['priority']}})
+        # Notificar todos os gerentes
+        managers = conn.execute("SELECT id FROM users WHERE role = 'manager'").fetchall()
+        for m in managers:
+            log_event(m['id'], f"Ticket #{ticket_id} foi reaberto.", ticket_id)
+            push_event(m['id'], {'type': 'ticket_update', 'event': 'reopened', 'ticket': {'id': ticket['id'], 'subject': ticket['subject'], 'priority': ticket['priority']}})
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Erro ao reabrir ticket: {str(e)}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
     finally:
         conn.close()

@@ -452,7 +452,7 @@ const AdminDashboard = (function() {
                             <button class="admin-view-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Ver detalhes" data-ticket-id="${ticket.id}">
                                 <span class="material-symbols-outlined text-gray-600">visibility</span>
                             </button>
-                            <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Reabrir" data-ticket-id="${ticket.id}">
+                            <button class="reopen-ticket-btn p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Reabrir" data-ticket-id="${ticket.id}">
                                 <span class="material-symbols-outlined text-blue-600">refresh</span>
                             </button>
                         </div>
@@ -469,6 +469,35 @@ const AdminDashboard = (function() {
                     .then(r => r.ok ? r.json() : Promise.reject('Falha ao carregar detalhes'))
                     .then(ticket => openAdminTicketModal(ticket))
                     .catch(err => Common.showToast(err.message));
+            });
+        });
+        
+        // Add event listeners for reopen buttons
+        document.querySelectorAll('.reopen-ticket-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const ticketId = this.getAttribute('data-ticket-id');
+                if (confirm(`Tem certeza que deseja reabrir o chamado #${ticketId}?`)) {
+                    fetch(`/api/admin/tickets/${ticketId}/reopen`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Common.showToast(`Chamado #${ticketId} reaberto com sucesso`);
+                            loadClosedTickets();
+                            loadRecentTickets();
+                        } else {
+                            Common.showToast(data.error || 'Erro ao reabrir chamado');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error reopening ticket:', error);
+                        Common.showToast('Erro ao reabrir chamado');
+                    });
+                }
             });
         });
     }
