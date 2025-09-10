@@ -117,7 +117,7 @@ def ensure_schema_and_password_hash():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Ensure columns for notification preferences
+        # Ensure columns for notification preferences and role
         cur.execute('PRAGMA table_info(users)')
         cols = {row['name'] for row in cur.fetchall()}
         if 'email_updates' not in cols:
@@ -126,6 +126,11 @@ def ensure_schema_and_password_hash():
             cur.execute("ALTER TABLE users ADD COLUMN sms_urgent INTEGER DEFAULT 0")
         if 'push_realtime' not in cols:
             cur.execute("ALTER TABLE users ADD COLUMN push_realtime INTEGER DEFAULT 1")
+        if 'role' not in cols:
+            # Add role column and populate based on existing is_admin values
+            cur.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+            cur.execute("UPDATE users SET role = 'admin' WHERE is_admin = 1")
+            cur.execute("UPDATE users SET role = 'user' WHERE is_admin = 0")
         # Ensure settings table for admin general settings
         cur.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
         # Seed defaults if missing
@@ -214,15 +219,25 @@ def login():
         user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
         conn.close()
         if user and user['password'] == hash_password(password):
+            # Determinar privilégios com base nas colunas disponíveis
+            user_keys = set(user.keys())
+            is_admin = False
+            role = 'user'
+            if 'is_admin' in user_keys:
+                is_admin = bool(user['is_admin'])
+                role = 'admin' if is_admin else 'user'
+            elif 'role' in user_keys:
+                role = (user['role'] or 'user')
+                is_admin = role in ['admin', 'manager']
+
+            # Definir sessão
             session['user_id'] = user['id']
             session['user_email'] = user['email']
             session['user_name'] = user['name'] if user['name'] else 'Usuário'
-            session['is_admin'] = user['is_admin'] == 1
-            
-            if session['is_admin']:
-                redirect_to = 'admin_dashboard'
-            else:
-                redirect_to = 'user_dashboard'
+            session['user_role'] = role
+            session['is_admin'] = is_admin
+
+            redirect_to = 'admin_dashboard' if role in ['admin', 'manager'] else 'user_dashboard'
             if remember:
                 session.permanent = True
                 resp = make_response(redirect(url_for(redirect_to)))
@@ -237,14 +252,14 @@ def login():
 
 @app.route('/admin/dashboard')
 def admin_dashboard():
-    if 'user_id' in session and session.get('is_admin'):
+    if 'user_id' in session and (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return render_template('dashboard-admin.html', user_email=session['user_email'])
     else:
         return redirect(url_for('index'))
 
 @app.route('/user/dashboard')
 def user_dashboard():
-    if 'user_id' in session and not session.get('is_admin'):
+    if 'user_id' in session and not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return render_template('dashboard-user.html', user_email=session['user_email'])
     else:
         return redirect(url_for('index'))
@@ -370,7 +385,7 @@ def api_help_center():
         except Exception:
             return jsonify(default_help_center_config)
     # PUT
-    if not session.get('is_admin'):
+    if not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         conn.close()
         return jsonify({'error': 'Forbidden'}), 403
     try:
@@ -397,7 +412,7 @@ def api_get_tickets():
     
     conn = get_db_connection()
     try:
-        if session.get('is_admin'):
+        if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
             tickets = conn.execute('''
                 SELECT t.*, u.name as user_name 
                 FROM tickets t 
@@ -432,7 +447,7 @@ def api_get_ticket(ticket_id):
         return jsonify({'error': 'Not found'}), 404
     # Authorization: admin or ticket owner
     is_owner = (ticket['user_id'] == session['user_id'])
-    if not (session.get('is_admin') or is_owner):
+    if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or is_owner):
         conn.close()
         return jsonify({'error': 'Forbidden'}), 403
     attachments = conn.execute(
@@ -531,7 +546,7 @@ def uploaded_file(filename):
 # Admin API routes
 @app.route('/api/admin/stats', methods=['GET'])
 def api_admin_stats():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()
@@ -549,8 +564,8 @@ def api_admin_stats():
     })
 
 @app.route('/api/admin/tickets/recent', methods=['GET'])
-def api_admin_recent_tickets():
-    if 'user_id' not in session or not session.get('is_admin'):
+def api_admin_tickets_recent():
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()
@@ -567,28 +582,39 @@ def api_admin_recent_tickets():
 
 @app.route('/api/admin/users', methods=['GET'])
 def api_admin_users():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()
-    users = conn.execute('SELECT id, name, email, phone, is_admin, created_at FROM users ORDER BY created_at DESC').fetchall()
+    users = conn.execute('''SELECT id, name, email, phone, 
+                                   COALESCE(role, CASE WHEN is_admin = 1 THEN 'admin' ELSE 'user' END) as role, 
+                                   created_at 
+                            FROM users ORDER BY created_at DESC''').fetchall()
     conn.close()
     
     return jsonify([dict(user) for user in users])
 
 @app.route('/api/admin/users', methods=['POST'])
 def api_admin_create_user():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
     
     conn = get_db_connection()
     try:
-        conn.execute('''INSERT INTO users (name, email, password, phone, is_admin)
-                        VALUES (?, ?, ?, ?, ?)''',
+        # Processar role do frontend
+        role = data.get('role', 'user')
+        if role not in ['user', 'manager', 'admin']:
+            role = 'user'
+        
+        # Manter compatibilidade com is_admin para o banco
+        is_admin_value = 1 if role in ['admin', 'manager'] else 0
+        
+        conn.execute('''INSERT INTO users (name, email, password, phone, role, is_admin)
+                        VALUES (?, ?, ?, ?, ?, ?)''',
                      (data['name'], data['email'], hash_password(data['password']), 
-                      data.get('phone', ''), 1 if data.get('is_admin') else 0))
+                      data.get('phone', ''), role, is_admin_value))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
@@ -598,23 +624,31 @@ def api_admin_create_user():
 
 @app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
 def api_admin_update_user(user_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
     
     conn = get_db_connection()
     # If password provided, update hashed; otherwise, keep existing
+    # Processar role do frontend
+    role = data.get('role', 'user')
+    if role not in ['user', 'manager', 'admin']:
+        role = 'user'
+    
+    # Manter compatibilidade com is_admin para o banco
+    is_admin_value = 1 if role in ['admin', 'manager'] else 0
+    
     if 'password' in data and data['password']:
-        conn.execute('''UPDATE users SET name = ?, email = ?, phone = ?, is_admin = ?, password = ?
+        conn.execute('''UPDATE users SET name = ?, email = ?, phone = ?, role = ?, is_admin = ?, password = ?
                         WHERE id = ?''',
                      (data['name'], data['email'], data.get('phone', ''), 
-                      1 if data.get('is_admin') else 0, hash_password(data['password']), user_id))
+                      role, is_admin_value, hash_password(data['password']), user_id))
     else:
-        conn.execute('''UPDATE users SET name = ?, email = ?, phone = ?, is_admin = ?
+        conn.execute('''UPDATE users SET name = ?, email = ?, phone = ?, role = ?, is_admin = ?
                         WHERE id = ?''',
                      (data['name'], data['email'], data.get('phone', ''), 
-                      1 if data.get('is_admin') else 0, user_id))
+                      role, is_admin_value, user_id))
     conn.commit()
     conn.close()
     
@@ -622,7 +656,7 @@ def api_admin_update_user(user_id):
 
 @app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
 def api_admin_delete_user(user_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()
@@ -705,7 +739,7 @@ def api_user_update_notifications():
 
 @app.route('/api/admin/tickets/<int:ticket_id>/status', methods=['PUT'])
 def api_admin_update_ticket_status(ticket_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
@@ -715,14 +749,14 @@ def api_admin_update_ticket_status(ticket_id):
     conn.execute('UPDATE tickets SET status = ?, updated_at = datetime("now") WHERE id = ?',
                  (status, ticket_id))
     
-    if status in ['Resolvido', 'Fechado']:
+    if status in ['Resolvido', 'Fechado', 'Rejeitado']:
         conn.execute('UPDATE tickets SET closed_at = datetime("now") WHERE id = ?', (ticket_id,))
     
     conn.commit()
     # Notify user about status change
     t = conn.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
     if t:
-        if status in ['Resolvido', 'Fechado']:
+        if status in ['Resolvido', 'Fechado', 'Rejeitado']:
             log_event(t['user_id'], f"Seu ticket #{ticket_id} foi concluído.", ticket_id)
         else:
             log_event(t['user_id'], f"O status do seu ticket #{ticket_id} foi alterado para {status}.", ticket_id)
@@ -742,13 +776,14 @@ def api_get_ticket_responses(ticket_id):
         conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
-    # Only allow admin or the ticket owner to view responses
-    if not (session.get('is_admin') or ticket['user_id'] == session['user_id']):
+    # Only allow admin, manager or the ticket owner to view responses
+    if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or ticket['user_id'] == session['user_id']):
         conn.close()
         return jsonify({'error': 'Forbidden'}), 403
 
     responses = conn.execute('''
-        SELECT tr.id, tr.message, tr.created_at, u.name as user_name, u.is_admin
+        SELECT tr.id, tr.message, tr.created_at, u.name as user_name, 
+               CASE WHEN u.is_admin = 1 THEN 'admin' ELSE 'user' END as user_role
         FROM ticket_responses tr
         JOIN users u ON tr.user_id = u.id
         WHERE tr.ticket_id = ?
@@ -773,8 +808,8 @@ def api_create_ticket_response(ticket_id):
         conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
-    # Only allow admin or the ticket owner to add responses
-    if not (session.get('is_admin') or ticket['user_id'] == session['user_id']):
+    # Only allow admin, manager or the ticket owner to add responses
+    if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or ticket['user_id'] == session['user_id']):
         conn.close()
         return jsonify({'error': 'Forbidden'}), 403
 
@@ -785,15 +820,16 @@ def api_create_ticket_response(ticket_id):
     ''', (ticket_id, session['user_id'], message))
     conn.commit()
 
-    # Notify the other party (user if admin responded, admin if user responded)
-    if session.get('is_admin'):
+    # Notify the other party (user if admin/manager responded, admin/manager if user responded)
+    if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
         log_event(ticket['user_id'], f"O suporte respondeu ao seu ticket #{ticket_id}.", ticket_id)
         notify_user_ticket_update(ticket['user_id'], dict(ticket), 'response_admin')
     else:
-        admins = conn.execute("SELECT id FROM users WHERE is_admin = 1").fetchall()
-        for admin in admins:
-            log_event(admin['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
-            push_event(admin['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': dict(ticket)})
+        # Notify all admins and managers
+        staff_users = conn.execute("SELECT id FROM users WHERE is_admin = 1").fetchall()
+        for staff in staff_users:
+            log_event(staff['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
+            push_event(staff['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': dict(ticket)})
 
     conn.close()
     return jsonify({'success': True, 'response_id': cur.lastrowid})
@@ -801,7 +837,7 @@ def api_create_ticket_response(ticket_id):
 # Admin General Settings API
 @app.route('/api/admin/settings', methods=['GET'])
 def api_admin_get_settings():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     conn = get_db_connection()
     rows = conn.execute('SELECT key, value FROM settings').fetchall()
@@ -815,7 +851,7 @@ def api_admin_get_settings():
 
 @app.route('/api/admin/settings', methods=['PUT'])
 def api_admin_update_settings():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     data = request.get_json() or {}
     allowed_keys = {'company_name', 'support_email', 'support_phone'}
@@ -843,7 +879,7 @@ def api_get_ticket_types():
 
 @app.route('/api/ticket-types', methods=['POST'])
 def api_create_ticket_type():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
@@ -862,7 +898,7 @@ def api_create_ticket_type():
 
 @app.route('/api/ticket-types/<int:type_id>', methods=['PUT'])
 def api_update_ticket_type(type_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
@@ -878,7 +914,7 @@ def api_update_ticket_type(type_id):
 
 @app.route('/api/ticket-types/<int:type_id>', methods=['DELETE'])
 def api_delete_ticket_type(type_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()
@@ -891,7 +927,7 @@ def api_delete_ticket_type(type_id):
 
 @app.route('/api/ticket-statuses', methods=['GET'])
 def api_get_ticket_statuses():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()
@@ -902,7 +938,7 @@ def api_get_ticket_statuses():
 
 @app.route('/api/ticket-statuses', methods=['POST'])
 def api_create_ticket_status():
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
@@ -921,7 +957,7 @@ def api_create_ticket_status():
 
 @app.route('/api/ticket-statuses/<int:status_id>', methods=['PUT'])
 def api_update_ticket_status(status_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
@@ -937,7 +973,7 @@ def api_update_ticket_status(status_id):
 
 @app.route('/api/ticket-statuses/<int:status_id>', methods=['DELETE'])
 def api_delete_ticket_status(status_id):
-    if 'user_id' not in session or not session.get('is_admin'):
+    if 'user_id' not in session or session.get('user_role') not in ['admin', 'manager']:
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db_connection()

@@ -13,7 +13,7 @@ def init_database():
                   email TEXT UNIQUE NOT NULL,
                   password TEXT NOT NULL,
                   phone TEXT,
-                  is_admin INTEGER DEFAULT 0,
+                  role TEXT NOT NULL DEFAULT 'user',
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
     # Create ticket_types table
@@ -82,15 +82,22 @@ def init_database():
 
     # Insert default admin user
     try:
-        c.execute("INSERT INTO users (name, email, password, is_admin) VALUES (?, ?, ?, ?)", 
-                  ('Administrador', 'admin@example.com', 'admin', 1))
+        c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", 
+                  ('Administrador', 'admin@example.com', 'admin', 'admin'))
     except sqlite3.IntegrityError:
         pass
 
     # Insert default regular user
     try:
-        c.execute("INSERT INTO users (name, email, password, is_admin) VALUES (?, ?, ?, ?)", 
-                  ('João Silva', 'joao@example.com', 'user123', 0))
+        c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", 
+                  ('João Silva', 'joao@example.com', 'user123', 'user'))
+    except sqlite3.IntegrityError:
+        pass
+
+    # Insert default manager user
+    try:
+        c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", 
+                  ('Gerente', 'manager@example.com', 'manager123', 'manager'))
     except sqlite3.IntegrityError:
         pass
 

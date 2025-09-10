@@ -523,14 +523,22 @@ const AdminDashboard = (function() {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.email}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.phone || '-'}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    <span class="px-2 py-1 text-xs rounded-full ${user.is_admin ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">
-                        ${user.is_admin ? 'Administrador' : 'Usuário'}
+                    <span class="px-2 py-1 text-xs rounded-full ${
+                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 
+                        user.role === 'manager' ? 'bg-green-100 text-green-800' : 
+                        'bg-blue-100 text-blue-800'
+                    }">
+                        ${
+                            user.role === 'admin' ? 'Administrador' : 
+                            user.role === 'manager' ? 'Gerente' : 
+                            'Usuário'
+                        }
                     </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(user.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div class="flex space-x-2">
-                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="AdminDashboard.editUser(${user.id}, '${user.name.replace(/'/g, "'")}', '${user.email.replace(/'/g, "'")}', '${user.phone ? user.phone.replace(/'/g, "'") : ''}', ${user.is_admin})">
+                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="AdminDashboard.editUser(${user.id}, '${user.name.replace(/'/g, "'")}', '${user.email.replace(/'/g, "'")}', '${user.phone ? user.phone.replace(/'/g, "'") : ''}', '${user.role || 'user'}')">
                             <span class="material-symbols-outlined text-blue-600">edit</span>
                         </button>
                         <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Excluir" onclick="AdminDashboard.deleteUser(${user.id}, '${user.name.replace(/'/g, "'")}')">
@@ -771,13 +779,13 @@ const AdminDashboard = (function() {
         }
     }
 
-    function editUser(id, name, email, phone, isAdmin) {
+    function editUser(id, name, email, phone, role) {
         document.getElementById('user-modal-title').textContent = 'Editar Usuário';
         document.getElementById('user-id').value = id;
         document.getElementById('user-name').value = name;
         document.getElementById('user-email').value = email;
         document.getElementById('user-phone').value = phone;
-        document.getElementById('user-is-admin').checked = isAdmin;
+        document.getElementById('user-role').value = role || 'user';
         document.getElementById('user-password').value = ''; // Clear password for security
         Common.showModal('add-user-modal'); // Reusing the add-user-modal
     }
@@ -789,7 +797,7 @@ const AdminDashboard = (function() {
         document.getElementById('user-email').value = '';
         document.getElementById('user-password').value = '';
         document.getElementById('user-phone').value = '';
-        document.getElementById('user-is-admin').checked = false;
+        document.getElementById('user-role').value = 'user';
         Common.showModal('add-user-modal');
     }
 
@@ -1132,12 +1140,12 @@ const AdminDashboard = (function() {
                 const email = document.getElementById('user-email').value;
                 const password = document.getElementById('user-password').value;
                 const phone = document.getElementById('user-phone').value;
-                const isAdmin = document.getElementById('user-is-admin').checked;
+                const role = document.getElementById('user-role').value;
                 
                 const url = userId ? `/api/admin/users/${userId}` : '/api/admin/users';
                 const method = userId ? 'PUT' : 'POST';
                 
-                const body = { name, email, phone, is_admin: isAdmin };
+                const body = { name, email, phone, role: role };
                 if (password) { // Only include password if it's provided (for new user or password change)
                     body.password = password;
                 }
