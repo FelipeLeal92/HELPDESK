@@ -80,26 +80,6 @@ def init_database():
                   FOREIGN KEY (user_id) REFERENCES users (id),
                   FOREIGN KEY (ticket_id) REFERENCES tickets (id))''')
 
-    # Insert default admin user
-    try:
-        c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", 
-                  ('Administrador', 'admin@example.com', 'admin', 'admin'))
-    except sqlite3.IntegrityError:
-        pass
-
-    # Insert default regular user
-    try:
-        c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", 
-                  ('João Silva', 'joao@example.com', 'user123', 'user'))
-    except sqlite3.IntegrityError:
-        pass
-
-    # Insert default manager user
-    try:
-        c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", 
-                  ('Gerente', 'manager@example.com', 'manager123', 'manager'))
-    except sqlite3.IntegrityError:
-        pass
 
     # Insert default ticket types
     ticket_types = [
