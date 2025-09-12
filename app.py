@@ -1475,5 +1475,7 @@ def debug_frontend():
 
 # Inicialização da aplicação
 if __name__ == '__main__':
+    # Inicializa o banco de dados
+    init_database()
     # Iniciar a aplicação
     app.run(host='0.0.0.0', port=5000, debug=True)
