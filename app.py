@@ -164,7 +164,7 @@ def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
             return
             
         # Telegram notification (replaces email)
-        if (user['email_updates'] or 0) == 1:  # Using email_updates preference for Telegram
+        if bool(user['email_updates']):  # Using email_updates preference for Telegram
             ticket_id = ticket.get('id', '')
             ticket_type = ticket.get('type', '')
             priority = ticket.get('priority', '')
@@ -196,7 +196,7 @@ def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
                 print(f"Erro ao enviar Telegram: {str(e)}")
                 
         # SMS (only if urgent)
-        if (user['sms_urgent'] or 0) == 1 and (ticket.get('priority') == 'Urgente') and user['phone']:
+        if user['sms_urgent'] and ticket.get('priority') == 'Urgente' and user['phone']:
             try:
                 sms_body = f"[URGENTE] Chamado #{ticket.get('id')} - {event_type}"
                 send_sms(user['phone'], sms_body)
@@ -204,7 +204,7 @@ def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
                 print(f"Erro ao enviar SMS: {str(e)}")
                 
         # Push via SSE
-        if (user['push_realtime'] or 0) == 1:
+        if bool((user['push_realtime'])):
             push_event(user_id, {
                 'type': 'ticket_update',
                 'event': event_type,
@@ -339,7 +339,7 @@ def mark_log_as_read(log_id):
         return jsonify({'error': 'Unauthorized'}), 401
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("UPDATE logs SET is_read = 1 WHERE id = %s AND user_id = %s", (log_id, session['user_id']))
+    cur.execute("UPDATE logs SET is_read = TRUE WHERE id = %s AND user_id = %s", (log_id, session['user_id']))
     cur.close()
     conn.close()
     return jsonify({'success': True})
@@ -518,7 +518,7 @@ def api_create_ticket():
         if t:
             log_event(t['user_id'], f"Novo ticket criado: {t['subject']}", ticket_id)
             notify_user_ticket_update(t['user_id'], t, 'created')
-            cur.execute("SELECT id FROM users WHERE is_admin = 1")
+            cur.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
             admins = cur.fetchall()
             for admin in admins:
                 log_event(admin['id'], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
@@ -665,7 +665,7 @@ def api_admin_create_user():
             role = 'user'
         
         # Manter compatibilidade com is_admin para o banco
-        is_admin_value = 1 if role in ['admin', 'manager'] else 0
+        is_admin_value = role in ['admin', 'manager']
         
         cur.execute('''INSERT INTO users (name, email, password, phone, role, is_admin)
                         VALUES (%s, %s, %s, %s, %s, %s)''',
@@ -695,7 +695,7 @@ def api_admin_update_user(user_id):
         role = 'user'
     
     # Manter compatibilidade com is_admin para o banco
-    is_admin_value = 1 if role in ['admin', 'manager'] else 0
+    is_admin_value = role in ['admin', 'manager']
     
     if 'password' in data and data['password']:
         cur.execute('''UPDATE users SET name = %s, email = %s, phone = %s, role = %s, is_admin = %s, password = %s
@@ -733,9 +733,9 @@ def api_user_get_settings():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
     cur.execute('''SELECT id, name, email, phone, role,
-                                  COALESCE(email_updates,1) AS email_updates,
-                                  COALESCE(sms_urgent,0) AS sms_urgent,
-                                  COALESCE(push_realtime,1) AS push_realtime
+                                  COALESCE(email_updates, TRUE) AS email_updates,
+                                  COALESCE(sms_urgent, FALSE) AS sms_urgent,
+                                  COALESCE(push_realtime, TRUE) AS push_realtime
                            FROM users WHERE id = %s''', (session['user_id'],))
     user = cur.fetchone()
     cur.close()
@@ -794,9 +794,9 @@ def api_user_update_notifications():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     data = request.get_json()
-    email_updates = 1 if data.get('email_updates') else 0
-    sms_urgent = 1 if data.get('sms_urgent') else 0
-    push_realtime = 1 if data.get('push_realtime') else 0
+    email_updates = bool(data.get('email_updates'))
+    sms_urgent = bool(data.get('sms_urgent'))
+    push_realtime = bool(data.get('push_realtime'))
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('UPDATE users SET email_updates = %s, sms_urgent = %s, push_realtime = %s WHERE id = %s',
@@ -970,7 +970,7 @@ def api_create_ticket_response(ticket_id):
             print(f"Erro ao enviar notificação de resposta admin: {str(e)}")
     else:
         # Notify all admins and managers
-        cur.execute("SELECT id FROM users WHERE is_admin = 1")
+        cur.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
         staff_users = cur.fetchall()
         for staff in staff_users:
             log_event(staff['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
@@ -1163,7 +1163,7 @@ def api_admin_assign_ticket(ticket_id):
             return jsonify({'error': 'Ticket não encontrado'}), 404
         
         # Verificar se o usuário a ser atribuído é admin ou manager
-        cur.execute('SELECT * FROM users WHERE id = %s AND (role = 'admin' OR role = 'manager')', (assigned_to,))
+        cur.execute("SELECT * FROM users WHERE id = %s AND (role = 'admin' OR role = 'manager')", (assigned_to,))
         assigned_user = cur.fetchone()
         if not assigned_user:
             return jsonify({'error': 'Usuário não é um administrador ou gerente'}), 400
@@ -1243,7 +1243,7 @@ def api_admin_cancel_ticket(ticket_id):
             return jsonify({'error': 'Ticket já está cancelado'}), 400
         
         # Cancelar ticket
-        cur.execute('UPDATE tickets SET status = 'Cancelado', updated_at = NOW() WHERE id = %s', (ticket_id,))
+        cur.execute("UPDATE tickets SET status = 'Cancelado', updated_at = NOW() WHERE id = %s", (ticket_id,))
         
         # Log e notificações
         manager_name = session.get('user_name', 'Gerente')
@@ -1308,7 +1308,7 @@ def api_admin_reopen_ticket(ticket_id):
         # Notificações
         user_id = ticket['user_id']
         assigned_to = ticket['assigned_to']
-        closed_by = ticket.get('closed_by')
+        closed_by = ticket['closed_by'] if 'closed_by' in ticket else None
         # Notificar usuário dono
         log_event(user_id, f"Seu ticket #{ticket_id} foi reaberto.", ticket_id)
         notify_user_ticket_update(user_id, ticket, 'reopened')
@@ -1343,7 +1343,7 @@ def api_get_ticket_types():
     
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT * FROM ticket_types WHERE active = 1 ORDER BY name')
+    cur.execute('SELECT * FROM ticket_types WHERE active = TRUE ORDER BY name')
     ticket_types = cur.fetchall()
     cur.close()
     conn.close()
@@ -1361,7 +1361,7 @@ def api_create_ticket_type():
     cur = conn.cursor()
     try:
         cur.execute('''INSERT INTO ticket_types (name, description, active)
-                        VALUES (%s, %s, 1)''',
+                        VALUES (%s, %s, TRUE)''',
                      (data['name'], data.get('description', '')))
         cur.close()
         conn.close()
@@ -1382,7 +1382,7 @@ def api_update_ticket_type(type_id):
     cur = conn.cursor()
     cur.execute('''UPDATE ticket_types SET name = %s, description = %s, active = %s
                     WHERE id = %s''',
-                 (data['name'], data.get('description', ''), data.get('active', 1), type_id))
+                 (data['name'], data.get('description', ''), data.get('active', True), type_id))
     cur.close()
     conn.close()
     
@@ -1396,7 +1396,7 @@ def api_delete_ticket_type(type_id):
     conn = get_db_connection()
     cur = conn.cursor()
     # Instead of deleting, we mark as inactive
-    cur.execute('UPDATE ticket_types SET active = 0 WHERE id = %s', (type_id,))
+    cur.execute('UPDATE ticket_types SET active = FALSE WHERE id = %s', (type_id,))
     cur.close()
     conn.close()
     
@@ -1409,7 +1409,7 @@ def api_get_ticket_statuses():
     
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT * FROM ticket_statuses WHERE active = 1 ORDER BY name')
+    cur.execute('SELECT * FROM ticket_statuses WHERE active = TRUE ORDER BY name')
     ticket_statuses = cur.fetchall()
     cur.close()
     conn.close()
@@ -1427,7 +1427,7 @@ def api_create_ticket_status():
     cur = conn.cursor()
     try:
         cur.execute('''INSERT INTO ticket_statuses (name, color, active)
-                        VALUES (%s, %s, 1)''',
+                        VALUES (%s, %s, TRUE)''',
                      (data['name'], data.get('color', '#808080'),))
         cur.close()
         conn.close()
@@ -1448,7 +1448,7 @@ def api_update_ticket_status(status_id):
     cur = conn.cursor()
     cur.execute('''UPDATE ticket_statuses SET name = %s, color = %s, active = %s
                     WHERE id = %s''',
-                 (data['name'], data.get('color', '#808080'), data.get('active', 1), status_id))
+                 (data['name'], data.get('color', '#808080'), data.get('active', True), status_id))
     cur.close()
     conn.close()
     
@@ -1462,7 +1462,7 @@ def api_delete_ticket_status(status_id):
     conn = get_db_connection()
     cur = conn.cursor()
     # Instead of deleting, we mark as inactive
-    cur.execute('UPDATE ticket_statuses SET active = 0 WHERE id = %s', (status_id,))
+    cur.execute('UPDATE ticket_statuses SET active = FALSE WHERE id = %s', (status_id,))
     cur.close()
     conn.close()
     
