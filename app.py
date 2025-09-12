@@ -15,8 +15,8 @@ from collections import defaultdict
 from werkzeug.utils import secure_filename
 from database import init_database
 
-app = Flask(__name__, static_folder='static')
-app.secret_key = 'super_secret_key'
+app = Flask(__name__, static_folder='static', template_folder='templates')
+app.secret_key = 'SECRET-KEY'
 app.permanent_session_lifetime = timedelta(days=7)
 
 # Uploads configuration
