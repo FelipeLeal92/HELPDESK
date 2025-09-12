@@ -28,11 +28,22 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Funções auxiliares - definidas antes de serem usadas
 def get_db_connection():
     try:
-        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        database_url = os.environ.get('DATABASE_URL')
+        if not database_url:
+            raise ValueError("DATABASE_URL não encontrado nas variáveis de ambiente")
+        
+        # Adicione logging para debug
+        print(f"Tentando conectar ao banco: {database_url[:50]}...")
+        
+        conn = psycopg2.connect(database_url)
         conn.autocommit = True
         return conn
     except psycopg2.Error as e:
-        print(f"Erro ao conectar ao banco de dados: {str(e)}")
+        print(f"Erro ao conectar ao PostgreSQL: {str(e)}")
+        print(f"Tipo de erro: {type(e)}")
+        raise
+    except Exception as e:
+        print(f"Erro geral na conexão: {str(e)}")
         raise
 
 def log_event(user_id, message, ticket_id=None):
@@ -446,6 +457,7 @@ def api_get_tickets():
     cur = conn.cursor(cursor_factory=DictCursor)
     try:
         if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
+            print("Executando query para admin...")
             cur.execute('''
                 SELECT t.*, u.name as user_name, a.name as assigned_to_name 
                 FROM tickets t 
@@ -455,16 +467,23 @@ def api_get_tickets():
             ''')
             tickets = cur.fetchall()
         else:
+            print(f"Executando query para usuário {session['user_id']}...")
             cur.execute('SELECT * FROM tickets WHERE user_id = %s ORDER BY created_at DESC', 
                                   (session['user_id'],))
             tickets = cur.fetchall()
         
         # Log para depuração
         print(f"Retornando {len(tickets)} tickets para usuário {session.get('user_id')}")
+    
         
         return jsonify(tickets)
+
+    except psycopg2.Error as e:
+        print(f"Erro PostgreSQL ao carregar tickets: {str(e)}")
+        print(f"Detalhes: {e.pgcode} - {e.pgerror}")
+        return jsonify({'error': 'Database error'}), 500    
     except Exception as e:
-        print(f"Erro ao carregar tickets: {str(e)}")
+        print(f"Erro ao carregar tickets: {str(e)}")       
         return jsonify({'error': 'Internal server error'}), 500
     finally:
         cur.close()
