@@ -333,12 +333,15 @@ def login():
             session['is_admin'] = is_admin
 
             redirect_to = 'admin_dashboard' if role in ['admin', 'manager'] else 'user_dashboard'
+            resp = make_response(redirect(url_for(redirect_to)))
             if remember:
                 session.permanent = True
-                resp = make_response(redirect(url_for(redirect_to)))
                 resp.set_cookie('remember_me', 'true', max_age=app.permanent_session_lifetime.total_seconds())
-                return resp
-            return redirect(url_for(redirect_to))
+                resp.set_cookie('remembered_email', email, max_age=app.permanent_session_lifetime.total_seconds())
+            else:
+                resp.set_cookie('remember_me', '', expires=0)
+                resp.set_cookie('remembered_email', '', expires=0)
+            return resp
         else:
             flash('Email ou senha incorretos', 'error')
             return redirect(url_for('index'))
@@ -388,8 +391,10 @@ def logout():
     session.pop('user_email', None)
     session.pop('user_name', None)
     session.pop('is_admin', None)
+    session.pop('user_role', None) # Garante que a role seja limpa
+    
+    # Apenas limpa a sessão, não os cookies de "lembrar-me"
     resp = make_response(redirect(url_for('index')))
-    resp.set_cookie('remember_me', '', expires=0)
     return resp
 
 # API routes for AJAX requests
