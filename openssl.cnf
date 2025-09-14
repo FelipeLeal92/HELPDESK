@@ -1,0 +1,10 @@
+openssl_conf = default_conf
+
+[ default_conf ]
+ssl_conf = ssl_sect
+
+[ ssl_sect ]
+system_default = system_default_sect
+
+[ system_default_sect ]
+CipherString = ALL:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4

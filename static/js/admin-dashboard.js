@@ -295,7 +295,7 @@ const AdminDashboard = (function() {
                     tickets.forEach(ticket => {
                         const option = document.createElement('option');
                         option.value = ticket.id;
-                        option.textContent = `#${ticket.id} - ${ticket.subject || ticket.description.substring(0, 30) + '...'}`;
+                        option.textContent = `#${ticket.id} - ${ticket.subject || (ticket.description ? ticket.description.substring(0, 30) + '...' : '')}`;
                         select.appendChild(option);
                     });
                 }
@@ -339,7 +339,7 @@ const AdminDashboard = (function() {
         tbody.innerHTML = tickets.map(ticket => `
             <tr class="hover:bg-gray-50 transition-all">
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || ticket.description.substring(0, 50) + '...'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <div class="flex items-center">
                         <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
@@ -407,7 +407,7 @@ const AdminDashboard = (function() {
         tbody.innerHTML = tickets.map(ticket => `
             <tr class="hover:bg-gray-50 transition-all">
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || ticket.description.substring(0, 50) + '...'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <div class="flex items-center">
                         <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
@@ -474,7 +474,7 @@ const AdminDashboard = (function() {
             return `
                 <tr class="hover:bg-gray-50 transition-all">
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || ticket.description.substring(0, 50) + '...'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         <div class="flex items-center">
                             <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
@@ -570,10 +570,10 @@ const AdminDashboard = (function() {
                     <p class="text-sm text-gray-500">${type.description || 'Sem descrição'}</p>
                 </div>
                 <div class="flex space-x-2">
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketType(${type.id}, '${type.name.replace(/'/g, "'")}', '${type.description ? type.description.replace(/'/g, "'") : ''}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketType(${type.id}, '${(type.name || '').replace(/'/g, "'")}', '${type.description ? type.description.replace(/'/g, "'") : ''}')">
                         <span class="material-symbols-outlined text-blue-600">edit</span>
                     </button>
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketType(${type.id}, '${type.name.replace(/'/g, "'")}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketType(${type.id}, '${(type.name || '').replace(/'/g, "'")}')">
                         <span class="material-symbols-outlined text-red-600">delete</span>
                     </button>
                 </div>
@@ -603,10 +603,10 @@ const AdminDashboard = (function() {
                     </div>
                 </div>
                 <div class="flex space-x-2">
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketStatus(${status.id}, '${status.name.replace(/'/g, "'")}', '${status.color}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketStatus(${status.id}, '${(status.name || '').replace(/'/g, "'")}', '${status.color}')">
                         <span class="material-symbols-outlined text-blue-600">edit</span>
                     </button>
-                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketStatus(${status.id}, '${status.name.replace(/'/g, "'")}')">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.deleteTicketStatus(${status.id}, '${(status.name || '').replace(/'/g, "'")}')">
                         <span class="material-symbols-outlined text-red-600">delete</span>
                     </button>
                 </div>
@@ -629,7 +629,7 @@ const AdminDashboard = (function() {
                         user.role === 'manager' ? 'bg-green-100 text-green-800' : 
                         'bg-blue-100 text-blue-800'
                     }">
-                        ${
+                        ${ 
                             user.role === 'admin' ? 'Administrador' : 
                             user.role === 'manager' ? 'Gerente' : 
                             'Usuário'
@@ -639,10 +639,10 @@ const AdminDashboard = (function() {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(user.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div class="flex space-x-2">
-                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="AdminDashboard.editUser(${user.id}, '${user.name.replace(/'/g, "'")}', '${user.email.replace(/'/g, "'")}', '${user.phone ? user.phone.replace(/'/g, "'") : ''}', '${user.role || 'user'}')">
+                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Editar" onclick="AdminDashboard.editUser(${user.id}, '${(user.name || '').replace(/'/g, "'")}', '${user.email.replace(/'/g, "'")}', '${user.phone ? user.phone.replace(/'/g, "'") : ''}', '${user.role || 'user'}')">
                             <span class="material-symbols-outlined text-blue-600">edit</span>
                         </button>
-                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Excluir" onclick="AdminDashboard.deleteUser(${user.id}, '${user.name.replace(/'/g, "'")}')">
+                        <button class="p-1.5 rounded-full hover:bg-gray-100 transition-all" title="Excluir" onclick="AdminDashboard.deleteUser(${user.id}, '${(user.name || '').replace(/'/g, "'")}')">
                             <span class="material-symbols-outlined text-red-600">delete</span>
                         </button>
                     </div>
@@ -1926,10 +1926,28 @@ const AdminDashboard = (function() {
         deleteUser,
         sortTable,
         showAddUserModal, // Expose the function globally
+        showAddTypeModal,
+        showAddStatusModal,
         navigateToMessages,
         getCurrentUserRole
     };
 })();
+
+function showAddTypeModal() {
+    document.getElementById('type-modal-title').textContent = 'Adicionar Novo Tipo de Chamado';
+    document.getElementById('type-id').value = ''; // Clear ID for new type
+    document.getElementById('type-name').value = '';
+    document.getElementById('type-description').value = '';
+    Common.showModal('type-modal');
+}
+
+function showAddStatusModal() {
+    document.getElementById('status-modal-title').textContent = 'Adicionar Novo Status de Chamado';
+    document.getElementById('status-id').value = ''; // Clear ID for new status
+    document.getElementById('status-name').value = '';
+    document.getElementById('status-color').value = '#808080'; // Default color
+    Common.showModal('status-modal');
+}
 
 // Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', function() {

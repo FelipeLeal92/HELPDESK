@@ -1,10 +1,12 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import ssl
 from flask import Flask, render_template, request, redirect, url_for, session, make_response, flash, jsonify, send_from_directory, Response, stream_with_context
 import psycopg2
+from psycopg2 import IntegrityError
 from psycopg2.extras import DictCursor
-from datetime import timedelta
+from datetime import timedelta, datetime
 import secrets
 import string
 import hashlib
@@ -26,6 +28,25 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB per file
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Funções auxiliares - definidas antes de serem usadas
+def format_date(dt_value):
+    """Formata data e hora para formato ISO com timezone"""
+    if dt_value is None:
+        return None
+    
+    if hasattr(dt_value, 'isoformat'):
+        # Garantir que inclua timezone se disponível
+        iso_str = dt_value.isoformat()
+        if 'T' in iso_str and '.' in iso_str:
+            # Formato: 2025-09-13T16:49:01.635780+00:00
+            return iso_str
+        elif 'T' in iso_str:
+            # Formato: 2025-09-13T16:49:01+00:00
+            return iso_str
+        else:
+            return str(dt_value)
+    else:
+        return str(dt_value)
+
 def get_db_connection():
     try:
         database_url = os.environ.get('DATABASE_URL')
@@ -160,6 +181,117 @@ def push_event(user_id: int, payload: dict):
         except Exception:
             pass
 
+def ensure_schema_and_password_hash():
+    """Garante que as colunas/tabelas necessárias existam e migra senhas em texto puro para hash sha256."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Obter colunas da tabela users
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'users'
+        """)
+        cols = {row[0] for row in cur.fetchall()}
+
+        # Adicionar colunas se não existirem
+        if 'email_updates' not in cols:
+            cur.execute("ALTER TABLE users ADD COLUMN email_updates INTEGER DEFAULT TRUE")
+        if 'sms_urgent' not in cols:
+            cur.execute("ALTER TABLE users ADD COLUMN sms_urgent INTEGER DEFAULT FALSE")
+        if 'push_realtime' not in cols:
+            cur.execute("ALTER TABLE users ADD COLUMN push_realtime INTEGER DEFAULT TRUE")
+        if 'role' not in cols:
+            cur.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+            cur.execute("UPDATE users SET role = 'admin' WHERE is_admin = TRUE")
+            cur.execute("UPDATE users SET role = 'user' WHERE is_admin = FALSE")
+
+        # Criar tabela settings se não existir
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
+        # Inserir valores padrão se não existirem
+        defaults = [
+            ('company_name', 'LogVerse'),
+            ('support_email', 'suporte@logverse.com'),
+            ('support_phone', '(11) 1234-5678'),
+            ('telegram_bot_token', ''),
+            ('telegram_group_id', ''),
+            ('telegram_topic_new_tickets', ''),
+            ('telegram_topic_messages', ''),
+            ('telegram_topic_assignments', ''),
+            ('telegram_topic_closed', ''),
+            ('telegram_topic_cancelled', '')
+        ]
+        for k, v in defaults:
+            cur.execute("""
+                INSERT INTO settings (key, value)
+                VALUES (%s, %s)
+                ON CONFLICT (key) DO NOTHING
+            """, (k, v))
+
+        # Obter colunas da tabela tickets
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'tickets'
+        """)
+        tcols = {row[0] for row in cur.fetchall()}
+        if 'closed_by' not in tcols:
+            cur.execute("ALTER TABLE tickets ADD COLUMN closed_by INTEGER")
+
+        # Migrar senhas para hash sha256 se necessário
+        cur.execute('SELECT id, password FROM users')
+        rows = cur.fetchall()
+        for row in rows:
+            user_id, pwd = row
+            pwd = pwd or ''
+            is_hex64 = isinstance(pwd, str) and len(pwd) == 64 and all(c in '0123456789abcdef' for c in pwd.lower())
+            if not is_hex64:
+                hashed = hash_password(pwd)
+                cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed, user_id))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    except Exception as e:
+        print(f"Erro ao garantir schema: {str(e)}")
+
+
+#Helper centralizado
+def run_query(query, params=None, fetchone=False, fetchall=False, commit=False, dict_cursor=False):
+    """
+    Executa uma query no PostgreSQL com tratamento de conexão e erros.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=DictCursor if dict_cursor else None)
+    try:
+        cur.execute(query, params or ())
+        result = None
+        if fetchone:
+            result = cur.fetchone()
+        elif fetchall:
+            result = cur.fetchall()
+        if commit:
+            conn.commit()
+        return result
+    except IntegrityError as e:
+        conn.rollback()
+        raise e
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cur.close()
+        conn.close()
+
+
 # Helper to notify user on ticket events
 def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
     """Send Telegram/SMS/push based on user preferences for ticket updates."""
@@ -230,7 +362,18 @@ def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
     except Exception as e:
         print(f"Erro na notificação: {str(e)}")
 
+
 # Rotas da aplicação
+@app.before_request
+def enforce_https():
+    # Se não estiver em produção, pular o redirecionamento
+    if app.debug or os.environ.get('FLASK_ENV') == 'development':
+        return
+        
+    if request.scheme != 'https':
+        url = request.url.replace('http://', 'https://')
+        return redirect(url)
+
 @app.route('/')
 def index():
     if 'user_id' in session:
@@ -246,37 +389,63 @@ def login():
         email = request.form['email']
         password = request.form['password']
         remember = 'remember' in request.form
+
+        print(f"=== TENTATIVA DE LOGIN ===")
+        print(f"Email: {email}")
+        print(f"Password: {hash_password(password)}")
+
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=DictCursor)
+
+        print(f"\n--- Buscando usuário no banco ---")
         cur.execute('SELECT * FROM users WHERE email = %s', (email,))
         user = cur.fetchone()
+
+        if user:
+            print(f"\n--- Usuário encontrado ---")
+            print(f"ID: {user['id']}")
+            print(f"Email: {user['email']}")
+            print(f"Name: {user['name']}")
+            print(f"Role: {user['role']}")
+            print(f"Password no banco: {user['password']}")
+            print(f"Password informado: {hash_password(password)}")
+            
+            # Verificar se a senha bate
+            if user['password'] == hash_password(password):
+                print(f"\n--- SENHA CORRETA - Login bem-sucedido ---")
+                
+                # Determinar privilégios
+                role = user.get('role', 'user')
+                is_admin = role in ['admin', 'manager']
+                print(f"Role: {role}, Is Admin: {is_admin}")
+                
+                session['user_id'] = user['id']
+                session['user_email'] = user['email']
+                session['user_name'] = user['name'] if user['name'] else 'Usuário'
+                session['user_role'] = role
+                session['is_admin'] = is_admin
+                
+                redirect_to = 'admin_dashboard' if is_admin else 'user_dashboard'
+                print(f"Redirecionando para: {redirect_to}")
+                
+                resp = make_response(redirect(url_for(redirect_to)))
+                if remember:
+                    session.permanent = True
+                    resp.set_cookie('remember_me', 'true', max_age=app.permanent_session_lifetime.total_seconds())
+                    resp.set_cookie('remembered_email', email, max_age=app.permanent_session_lifetime.total_seconds())
+                else:
+                    resp.set_cookie('remember_me', '', expires=0)
+                    resp.set_cookie('remembered_email', '', expires=0)
+                return resp
+            else:
+                print(f"\n--- SENHA INCORRETA ---")
+        else:
+            print(f"\n--- USUÁRIO NÃO ENCONTRADO ---")
+        
         cur.close()
         conn.close()
-        if user and user['password'] == hash_password(password):
-            # Determinar privilégios com base na coluna de função (role)
-            role = user.get('role', 'user')
-            is_admin = role in ['admin', 'manager']
-
-            # Definir sessão
-            session['user_id'] = user['id']
-            session['user_email'] = user['email']
-            session['user_name'] = user['name'] if user['name'] else 'Usuário'
-            session['user_role'] = role
-            session['is_admin'] = is_admin
-
-            redirect_to = 'admin_dashboard' if is_admin else 'user_dashboard'
-            resp = make_response(redirect(url_for(redirect_to)))
-            if remember:
-                session.permanent = True
-                resp.set_cookie('remember_me', 'true', max_age=app.permanent_session_lifetime.total_seconds())
-                resp.set_cookie('remembered_email', email, max_age=app.permanent_session_lifetime.total_seconds())
-            else:
-                resp.set_cookie('remember_me', '', expires=0)
-                resp.set_cookie('remembered_email', '', expires=0)
-            return resp
-        else:
-            flash('Email ou senha incorretos', 'error')
-            return redirect(url_for('index'))
+        flash('Email ou senha incorretos', 'error')
+        return redirect(url_for('index'))
     else:
         return redirect(url_for('index'))
 
@@ -342,7 +511,12 @@ def get_logs():
     logs = cur.fetchall()
     cur.close()
     conn.close()
-    return jsonify(logs)
+    formatted_logs = []
+    for log in logs:
+        log_dict = dict(log)
+        log_dict['created_at'] = format_date(log_dict.get('created_at'))
+        formatted_logs.append(log_dict)
+    return jsonify(formatted_logs)
 
 @app.route('/api/logs/<int:log_id>/read', methods=['PUT'])
 def mark_log_as_read(log_id):
@@ -406,6 +580,7 @@ default_help_center_config = {
     ]
 }
 
+
 @app.route('/api/help-center', methods=['GET', 'PUT'])
 def api_help_center():
     if 'user_id' not in session:
@@ -448,82 +623,148 @@ def api_help_center():
         conn.close()
     return jsonify({'success': True})
 
-@app.route('/api/tickets', methods=['GET'])
+
+@app.route('/api/tickets', methods=['GET', 'POST'])
 def api_get_tickets():
     if 'user_id' not in session:
+        print("ERRO: Usuário não está na sessão")
         return jsonify({'error': 'Unauthorized'}), 401
+    
+    print(f"=== API TICKETS ===")
+    print(f"User ID: {session.get('user_id')}")
+    print(f"User Role: {session.get('user_role')}")
+    print(f"Is Admin: {session.get('is_admin')}")
     
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
     try:
         if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
-            print("Executando query para admin...")
             cur.execute('''
-                SELECT t.*, u.name as user_name, a.name as assigned_to_name 
+                SELECT t.id, 
+                       t.type, 
+                       t.priority, 
+                       t.subject, 
+                       t.status, 
+                       COALESCE(u.name, '') as user_name, 
+                       COALESCE(a.name, '') as assigned_to_name,
+                       t.created_at,
+                       t.updated_at
                 FROM tickets t 
                 LEFT JOIN users u ON t.user_id = u.id 
                 LEFT JOIN users a ON t.assigned_to = a.id
                 ORDER BY t.created_at DESC
             ''')
-            tickets = cur.fetchall()
         else:
-            print(f"Executando query para usuário {session['user_id']}...")
-            cur.execute('SELECT * FROM tickets WHERE user_id = %s ORDER BY created_at DESC', 
-                                  (session['user_id'],))
-            tickets = cur.fetchall()
+            cur.execute('''
+                SELECT id, type, priority, subject, status, 
+                       (SELECT name FROM users WHERE id = user_id) as user_name,
+                       (SELECT name FROM users WHERE id = assigned_to) as assigned_to_name,
+                       created_at,
+                       updated_at
+                FROM tickets 
+                WHERE user_id = %s 
+                ORDER BY created_at DESC
+            ''', (session['user_id'],))
         
-        # Log para depuração
-        print(f"Retornando {len(tickets)} tickets para usuário {session.get('user_id')}")
-    
+        tickets = cur.fetchall()
+        print(f"Retornando {len(tickets)} tickets")
         
-        return jsonify(tickets)
-
-    except psycopg2.Error as e:
-        print(f"Erro PostgreSQL ao carregar tickets: {str(e)}")
-        print(f"Detalhes: {e.pgcode} - {e.pgerror}")
-        return jsonify({'error': 'Database error'}), 500    
+        formatted_tickets = []
+        for ticket in tickets:
+            ticket_dict = dict(ticket)
+            ticket_dict['created_at'] = format_date(ticket_dict.get('created_at'))
+            ticket_dict['updated_at'] = format_date(ticket_dict.get('updated_at'))
+            ticket_dict['user_name'] = ticket_dict.get('user_name', '')
+            ticket_dict['assigned_to_name'] = ticket_dict.get('assigned_to_name', '')
+            formatted_tickets.append(ticket_dict)
+        
+        return jsonify(formatted_tickets)
+        
     except Exception as e:
-        print(f"Erro ao carregar tickets: {str(e)}")       
-        return jsonify({'error': 'Internal server error'}), 500
+        print(f"ERRO ao carregar tickets: {str(e)}")
+        print(f"Tipo do erro: {type(e)}")
+        return jsonify({'error': str(e)}), 500
     finally:
         cur.close()
         conn.close()
 
+
 @app.route('/api/tickets/<int:ticket_id>', methods=['GET'])
 def api_get_ticket(ticket_id):
+    """Buscar detalhes de um ticket específico"""
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+    
+    print(f"=== API GET TICKET {ticket_id} ===")
+    
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT * FROM tickets WHERE id = %s', (ticket_id,))
-    ticket = cur.fetchone()
-    if not ticket:
+    
+    try:
+        # Buscar ticket principal com LEFT JOINs para nomes
+        cur.execute('''
+            SELECT t.id, 
+                   t.type, 
+                   t.priority, 
+                   t.subject, 
+                   t.description, 
+                   t.status,
+                   COALESCE(u.name, '') as user_name, 
+                   COALESCE(a.name, '') as assigned_to_name,
+                   t.created_at,
+                   t.updated_at,
+                   t.closed_at
+            FROM tickets t 
+            LEFT JOIN users u ON t.user_id = u.id 
+            LEFT JOIN users a ON t.assigned_to = a.id
+            WHERE t.id = %s
+        ''', (ticket_id,))
+        ticket = cur.fetchone()
+        
+        if not ticket:
+            print(f"Ticket {ticket_id} não encontrado")
+            return jsonify({'error': 'Not found'}), 404
+        
+        print(f"Ticket encontrado: {dict(ticket)}")
+        
+        # Buscar anexos
+        cur.execute('''
+            SELECT id, filename, filepath, filesize, uploaded_at 
+            FROM attachments 
+            WHERE ticket_id = %s 
+            ORDER BY uploaded_at DESC
+        ''', (ticket_id,))
+        attachments = cur.fetchall()
+        
+        # Formatar resposta
+        ticket_dict = dict(ticket)
+
+        # Formatar datas
+        for date_field in ['created_at', 'updated_at', 'closed_at']:
+            if ticket_dict.get(date_field):
+                ticket_dict[date_field] = ticket_dict[date_field].isoformat() if hasattr(ticket_dict[date_field], 'isoformat') else str(ticket_dict[date_field])
+        
+        # Formatar anexos
+        ticket_dict['attachments'] = [
+            {
+                'id': a['id'],
+                'filename': a['filename'],
+                'url': url_for('uploaded_file', filename=a['filepath']),
+                'filesize': a['filesize'],
+                'uploaded_at': format_date(a['uploaded_at'])
+            } for a in attachments
+        ]
+        
+        print(f"Ticket com {len(attachments)} anexos")
+        return jsonify(ticket_dict)
+        
+    except Exception as e:
+        print(f"Erro ao buscar ticket {ticket_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
         cur.close()
         conn.close()
-        return jsonify({'error': 'Not found'}), 404
-    # Authorization: admin or ticket owner
-    is_owner = (ticket['user_id'] == session['user_id'])
-    if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or is_owner):
-        cur.close()
-        conn.close()
-        return jsonify({'error': 'Forbidden'}), 403
-    cur.execute(
-        'SELECT id, filename, filepath, filesize, uploaded_at FROM attachments WHERE ticket_id = %s ORDER BY uploaded_at DESC',
-        (ticket_id,)
-    )
-    attachments = cur.fetchall()
-    ticket['attachments'] = [
-        {
-            'id': a['id'],
-            'filename': a['filename'],
-            'url': url_for('uploaded_file', filename=a['filepath']),
-            'filesize': a['filesize'],
-            'uploaded_at': a['uploaded_at'],
-        } for a in attachments
-    ]
-    cur.close()
-    conn.close()
-    return jsonify(ticket)
+
 
 @app.route('/api/tickets', methods=['POST'])
 def api_create_ticket():
@@ -607,261 +848,339 @@ def uploaded_file(filename):
     # Serve uploaded files
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=False)
 
+
 # Admin API routes
 @app.route('/api/admin/stats', methods=['GET'])
 def api_admin_stats():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    
-    cur.execute('SELECT COUNT(*) as count FROM tickets')
-    total = cur.fetchone()['count']
-    cur.execute("SELECT COUNT(*) as count FROM tickets WHERE status IN ('Aberto', 'Em Andamento', 'Pendente')")
-    open_tickets = cur.fetchone()['count']
-    cur.execute("SELECT COUNT(*) as count FROM tickets WHERE status IN ('Resolvido', 'Fechado')")
-    resolved = cur.fetchone()['count']
-    
-    cur.close()
-    conn.close()
-    
+
+    stats = run_query("""
+        SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (
+                WHERE ts.name IN ('Aberto', 'Em Andamento', 'Pendente')
+            ) AS open,
+            COUNT(*) FILTER (
+                WHERE ts.name IN ('Resolvido', 'Fechado', 'Concluído', 'Finalizado')
+            ) AS resolved
+        FROM tickets t
+        LEFT JOIN ticket_statuses ts ON t.status_id = ts.id
+    """, fetchone=True, dict_cursor=True) or {'total': 0, 'open': 0, 'resolved': 0}
+
     return jsonify({
-        'total': total,
-        'open': open_tickets,
-        'resolved': resolved
+        'stats': {
+            'total': stats['total'],
+            'open': stats['open'],
+            'resolved': stats['resolved']
+        },
+        'success': True
     })
+
 
 @app.route('/api/admin/tickets/recent', methods=['GET'])
 def api_admin_tickets_recent():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('''
-        SELECT t.*, u.name as user_name, a.name as assigned_to_name 
-        FROM tickets t 
-        LEFT JOIN users u ON t.user_id = u.id 
+
+    tickets = run_query("""
+        SELECT t.*, 
+               u.name AS user_name, 
+               a.name AS assigned_to_name
+        FROM tickets t
+        LEFT JOIN users u ON t.user_id = u.id
         LEFT JOIN users a ON t.assigned_to = a.id
-        ORDER BY t.created_at DESC 
+        ORDER BY t.created_at DESC
         LIMIT 10
-    ''')
-    tickets = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return jsonify(tickets)
+    """, fetchall=True, dict_cursor=True)
+
+    formatted = []
+    for t in tickets:
+        td = dict(t)
+        td['created_at'] = format_date(td.get('created_at'))
+        td['updated_at'] = format_date(td.get('updated_at'))
+        td['closed_at'] = format_date(td.get('closed_at'))
+        formatted.append(td)
+
+    return jsonify(formatted)
+
 
 @app.route('/api/admin/users', methods=['GET'])
 def api_admin_users():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('''SELECT id, name, email, phone, role, created_at 
-                            FROM users ORDER BY created_at DESC''')
-    users = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return jsonify(users)
+
+    users = run_query("""
+        SELECT id, 
+               name, 
+               email, 
+               phone,
+               COALESCE(role, CASE WHEN is_admin = TRUE THEN 'admin' ELSE 'user' END) AS role,
+               created_at
+        FROM users
+        ORDER BY created_at DESC
+    """, fetchall=True, dict_cursor=True)
+
+    formatted_users = []
+    for u in users:
+        u_dict = dict(u)
+        u_dict['created_at'] = format_date(u_dict.get('created_at'))
+        formatted_users.append(u_dict)
+
+    return jsonify(formatted_users)
+
 
 @app.route('/api/admin/users', methods=['POST'])
 def api_admin_create_user():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        # Processar role do frontend
-        role = data.get('role', 'user')
-        if role not in ['user', 'manager', 'admin']:
-            role = 'user'
-        
-        # Manter compatibilidade com is_admin para o banco
-        is_admin_value = role in ['admin', 'manager']
-        
-        cur.execute('''INSERT INTO users (name, email, password, phone, role, is_admin)
-                        VALUES (%s, %s, %s, %s, %s, %s)''',
-                     (data['name'], data['email'], hash_password(data['password']), 
-                      data.get('phone', ''), role, is_admin_value))
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except psycopg2.IntegrityError:
-        cur.close()
-        conn.close()
-        return jsonify({'error': 'Email já existe'}), 400
-
-@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
-def api_admin_update_user(user_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # If password provided, update hashed; otherwise, keep existing
-    # Processar role do frontend
     role = data.get('role', 'user')
     if role not in ['user', 'manager', 'admin']:
         role = 'user'
+    is_admin_value = True if role in ['admin', 'manager'] else False
+
+    try:
+        run_query("""
+            INSERT INTO users (name, email, password, phone, role, is_admin)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            data['name'],
+            data['email'],
+            hash_password(data['password']),
+            data.get('phone', ''),
+            role,
+            is_admin_value
+        ), commit=True)
+        return jsonify({'success': True})
+    except IntegrityError:
+        return jsonify({'error': 'Email já existe'}), 400
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+def api_admin_update_user(user_id):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
+        return jsonify({'error': 'Unauthorized'}), 401
     
-    # Manter compatibilidade com is_admin para o banco
-    is_admin_value = role in ['admin', 'manager']
-    
-    if 'password' in data and data['password']:
-        cur.execute('''UPDATE users SET name = %s, email = %s, phone = %s, role = %s, is_admin = %s, password = %s
-                        WHERE id = %s''',
-                     (data['name'], data['email'], data.get('phone', ''), 
-                      role, is_admin_value, hash_password(data['password']), user_id))
-    else:
-        cur.execute('''UPDATE users SET name = %s, email = %s, phone = %s, role = %s, is_admin = %s
-                        WHERE id = %s''',
-                     (data['name'], data['email'], data.get('phone', ''), 
-                      role, is_admin_value, user_id))
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True})
+    data = request.get_json()
+    role = data.get('role', 'user')
+    if role not in ['user', 'manager', 'admin']:
+        role = 'user'
+    is_admin_value = True if role in ['admin', 'manager'] else False
+
+    try:
+        if 'password' in data and data['password']:
+            run_query("""
+                UPDATE users
+                SET name = %s, email = %s, phone = %s, role = %s, is_admin = %s, password = %s
+                WHERE id = %s
+            """, (
+                data['name'],
+                data['email'],
+                data.get('phone', ''),
+                role,
+                is_admin_value,
+                hash_password(data['password']),
+                user_id
+            ), commit=True)
+        else:
+            run_query("""
+                UPDATE users
+                SET name = %s, email = %s, phone = %s, role = %s, is_admin = %s
+                WHERE id = %s
+            """, (
+                data['name'],
+                data['email'],
+                data.get('phone', ''),
+                role,
+                is_admin_value,
+                user_id
+            ), commit=True)
+        return jsonify({'success': True})
+    except IntegrityError:
+        return jsonify({'error': 'Email já existe'}), 400
+
 
 @app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
 def api_admin_delete_user(user_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('DELETE FROM users WHERE id = %s', (user_id,))
-    cur.close()
-    conn.close()
-    
+
+    run_query("DELETE FROM users WHERE id = %s", (user_id,), commit=True)
     return jsonify({'success': True})
+
 
 # User Settings (Profile/Security/Notifications)
 @app.route('/api/user/settings', methods=['GET'])
 def api_user_get_settings():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('''SELECT id, name, email, phone, role,
-                                  COALESCE(email_updates, TRUE) AS email_updates,
-                                  COALESCE(sms_urgent, FALSE) AS sms_urgent,
-                                  COALESCE(push_realtime, TRUE) AS push_realtime
-                           FROM users WHERE id = %s''', (session['user_id'],))
-    user = cur.fetchone()
-    cur.close()
-    conn.close()
+
+    user = run_query("""
+        SELECT id, name, email, phone, role,
+                COALESCE(email_updates, TRUE)  AS email_updates,
+                COALESCE(sms_urgent, FALSE)    AS sms_urgent,
+                COALESCE(push_realtime, TRUE)  AS push_realtime
+        FROM users
+
+        WHERE id = %s
+    """, (session['user_id'],), fetchone=True, dict_cursor=True)
+
     if not user:
         return jsonify({'error': 'Not found'}), 404
-    return jsonify(user)
+
+    u_dict = dict(user)
+    u_dict['created_at'] = format_date(u_dict.get('created_at'))
+
+    return jsonify(u_dict)
+
 
 @app.route('/api/user/settings/profile', methods=['PUT'])
 def api_user_update_profile():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json()
     name = data.get('name', '').strip()
     email = data.get('email', '').strip()
     phone = data.get('phone', '').strip()
+
     if not name or not email:
         return jsonify({'error': 'Nome e email são obrigatórios'}), 400
-    conn = get_db_connection()
-    cur = conn.cursor()
+
     try:
-        cur.execute('UPDATE users SET name = %s, email = %s, phone = %s WHERE id = %s', (name, email, phone, session['user_id']))
-    except psycopg2.IntegrityError:
-        cur.close()
-        conn.close()
+        run_query("""
+            UPDATE users
+            SET name = %s, email = %s, phone = %s
+            WHERE id = %s
+        """, (name, email, phone, session['user_id']), commit=True)
+        return jsonify({'success': True})
+    except IntegrityError:
         return jsonify({'error': 'Email já existe'}), 400
-    cur.close()
-    conn.close()
-    return jsonify({'success': True})
+
 
 @app.route('/api/user/settings/security', methods=['PUT'])
 def api_user_update_security():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json()
     current = data.get('current_password', '')
     new = data.get('new_password', '')
     confirm = data.get('confirm_password', '')
+
     if not new or new != confirm:
         return jsonify({'error': 'Nova senha e confirmação não conferem'}), 400
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT password FROM users WHERE id = %s', (session['user_id'],))
-    user = cur.fetchone()
+
+    # Busca senha atual
+    user = run_query(
+        "SELECT password FROM users WHERE id = %s",
+        (session['user_id'],),
+        fetchone=True,
+        dict_cursor=True
+    )
+
     if not user or user['password'] != hash_password(current):
-        cur.close()
-        conn.close()
         return jsonify({'error': 'Senha atual inválida'}), 400
-    cur.execute('UPDATE users SET password = %s WHERE id = %s', (hash_password(new), session['user_id']))
-    cur.close()
-    conn.close()
+
+    # Atualiza senha
+    run_query(
+        "UPDATE users SET password = %s WHERE id = %s",
+        (hash_password(new), session['user_id']),
+        commit=True
+    )
+
     return jsonify({'success': True})
+
 
 @app.route('/api/user/settings/notifications', methods=['PUT'])
 def api_user_update_notifications():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json()
-    email_updates = bool(data.get('email_updates'))
-    sms_urgent = bool(data.get('sms_urgent'))
-    push_realtime = bool(data.get('push_realtime'))
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('UPDATE users SET email_updates = %s, sms_urgent = %s, push_realtime = %s WHERE id = %s',
-                 (email_updates, sms_urgent, push_realtime, session['user_id']))
-    cur.close()
-    conn.close()
+    email_updates = True if data.get('email_updates') else False
+    sms_urgent = True if data.get('sms_urgent') else False
+    push_realtime = True if data.get('push_realtime') else False
+
+    run_query("""
+        UPDATE users
+        SET email_updates = %s, sms_urgent = %s, push_realtime = %s
+        WHERE id = %s
+    """, (email_updates, sms_urgent, push_realtime, session['user_id']), commit=True)
+
     return jsonify({'success': True})
+
 
 @app.route('/api/admin/tickets/<int:ticket_id>/status', methods=['PUT'])
 def api_admin_update_ticket_status(ticket_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
     status = data.get('status')
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    
+
     # Verificar se o ticket existe e obter informações de atribuição
-    cur.execute('SELECT * FROM tickets WHERE id = %s', (ticket_id,))
-    ticket = cur.fetchone()
+    ticket = run_query(
+        "SELECT * FROM tickets WHERE id = %s",
+        (ticket_id,),
+        fetchone=True,
+        dict_cursor=True
+    )
     if not ticket:
-        cur.close()
-        conn.close()
         return jsonify({'error': 'Ticket não encontrado'}), 404
-    
-    # Se o status for de finalização (Resolvido, Fechado, Rejeitado) e houver um responsável atribuído
+
+    # Se o status for de finalização e houver um responsável atribuído
     if status in ['Resolvido', 'Fechado', 'Rejeitado'] and ticket['assigned_to']:
         # Apenas o responsável atribuído pode finalizar o chamado
         if session['user_id'] != ticket['assigned_to']:
-            cur.close()
-            conn.close()
             return jsonify({'error': 'Somente o administrador responsável por este chamado pode finalizá-lo'}), 403
-    
-    cur.execute('UPDATE tickets SET status = %s, updated_at = NOW() WHERE id = %s',
-                 (status, ticket_id))
-    
+
+    # Atualiza status e updated_at
+    run_query(
+        "UPDATE tickets SET status = %s, updated_at = NOW() WHERE id = %s",
+        (status, ticket_id),
+        commit=True
+    )
+
+    # Se for finalização, atualiza closed_at e closed_by
     if status in ['Resolvido', 'Fechado', 'Rejeitado']:
-        cur.execute('UPDATE tickets SET closed_at = NOW(), closed_by = %s WHERE id = %s', (session['user_id'], ticket_id))
-    
-    # Notify user about status change
-    cur.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s', (ticket_id,))
-    t = cur.fetchone()
+        run_query(
+            "UPDATE tickets SET closed_at = NOW(), closed_by = %s WHERE id = %s",
+            (session['user_id'], ticket_id),
+            commit=True
+        )
+
+    # Buscar ticket atualizado para notificação
+    t = run_query(
+        "SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s",
+        (ticket_id,),
+        fetchone=True,
+        dict_cursor=True
+    )
+
     if t:
-        # Determine event type based on status
+        t_dict = dict(t)
+        t_dict['created_at'] = format_date(t_dict.get('created_at'))
+        t_dict['updated_at'] = format_date(t_dict.get('updated_at'))
+        t_dict['closed_at'] = format_date(t_dict.get('closed_at'))
+
+        # Determinar tipo de evento
         event_type = 'status_changed'
         if status in ['Resolvido', 'Fechado']:
             event_type = 'closed'
@@ -871,45 +1190,53 @@ def api_admin_update_ticket_status(ticket_id):
             log_event(t['user_id'], f"Seu ticket #{ticket_id} foi cancelado.", ticket_id)
         else:
             log_event(t['user_id'], f"O status do seu ticket #{ticket_id} foi alterado para {status}.", ticket_id)
-        
-        notify_user_ticket_update(t['user_id'], t, event_type)
-    cur.close()
-    conn.close()
-    
+
+        notify_user_ticket_update(t['user_id'], t_dict, event_type)
+
     return jsonify({'success': True})
+
 
 @app.route('/api/tickets/<int:ticket_id>/responses', methods=['GET'])
 def api_get_ticket_responses(ticket_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT user_id FROM tickets WHERE id = %s', (ticket_id,))
-    ticket = cur.fetchone()
+
+    # Verifica se o ticket existe e pega o dono
+    ticket = run_query(
+        "SELECT user_id FROM tickets WHERE id = %s",
+        (ticket_id,),
+        fetchone=True,
+        dict_cursor=True
+    )
     if not ticket:
-        cur.close()
-        conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
-# Only allow: ticket owner OR any staff (admin/manager) to view responses
-    if not ((session.get('is_admin') or session.get('user_role') in ['admin', 'manager']) or ticket['user_id'] == session['user_id']):
-        cur.close()
-        conn.close()
+    # Permissão: dono do ticket ou staff (admin/manager)
+    if not (
+        (session.get('is_admin') or session.get('user_role') in ['admin', 'manager'])
+        or ticket['user_id'] == session['user_id']
+    ):
         return jsonify({'error': 'Forbidden'}), 403
 
-    cur.execute('''
-        SELECT tr.id, tr.message, tr.created_at, u.name as user_name, 
-               u.role as user_role
+    # Busca respostas do ticket
+    responses = run_query("""
+        SELECT tr.id, tr.message, tr.created_at, u.name AS user_name,
+               CASE WHEN u.is_admin = TRUE THEN 'admin' ELSE 'user' END AS user_role
         FROM ticket_responses tr
         JOIN users u ON tr.user_id = u.id
         WHERE tr.ticket_id = %s
         ORDER BY tr.created_at ASC
-    ''', (ticket_id,))
-    responses = cur.fetchall()
-    cur.close()
-    conn.close()
-    return jsonify(responses)
+    """, (ticket_id,), fetchall=True, dict_cursor=True)
+
+    # Formata datas
+    formatted_responses = []
+    for r in responses:
+        r_dict = dict(r)
+        r_dict['created_at'] = format_date(r_dict.get('created_at'))
+        formatted_responses.append(r_dict)
+
+    return jsonify(formatted_responses)
+
 
 @app.route('/api/tickets/<int:ticket_id>/responses', methods=['POST'])
 def api_create_ticket_response(ticket_id):
@@ -921,54 +1248,52 @@ def api_create_ticket_response(ticket_id):
     if not message:
         return jsonify({'error': 'Message cannot be empty'}), 400
 
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
     # Buscar ticket com nome do usuário
-    cur.execute('''
-        SELECT t.*, u.name as user_name
+    ticket = run_query("""
+        SELECT t.*, u.name AS user_name
         FROM tickets t
         LEFT JOIN users u ON t.user_id = u.id
         WHERE t.id = %s
-    ''', (ticket_id,))
-    ticket = cur.fetchone()
+    """, (ticket_id,), fetchone=True, dict_cursor=True)
+
     if not ticket:
-        cur.close()
-        conn.close()
         return jsonify({'error': 'Ticket not found'}), 404
 
     # Buscar nome do administrador atribuído (se houver)
     assigned_user = None
     if ticket['assigned_to']:
-        cur.execute('SELECT name FROM users WHERE id = %s', (ticket['assigned_to'],))
-        assigned_user = cur.fetchone()
+        assigned_user = run_query(
+            "SELECT name FROM users WHERE id = %s",
+            (ticket['assigned_to'],),
+            fetchone=True,
+            dict_cursor=True
+        )
 
-# Only allow: ticket owner OR assigned admin/manager (if assigned), otherwise forbid
+    # Permissões
     is_owner = (ticket['user_id'] == session['user_id'])
     is_staff = (session.get('is_admin') or session.get('user_role') in ['admin', 'manager'])
     assigned_to = ticket['assigned_to']
+
     if is_staff and assigned_to:
-        # Staff can only respond if they are assigned to this ticket
         if session['user_id'] != assigned_to:
-            cur.close()
-            conn.close()
             return jsonify({'error': 'Somente o administrador designado pode responder a este ticket'}), 403
     elif not (is_owner or is_staff):
-        cur.close()
-        conn.close()
         return jsonify({'error': 'Forbidden'}), 403
 
-    cur.execute('''
+    # Inserir resposta e obter ID
+    response_row = run_query("""
         INSERT INTO ticket_responses (ticket_id, user_id, message)
-        VALUES (%s, %s, %s) RETURNING id
-    ''', (ticket_id, session['user_id'], message))
-    response_id = cur.fetchone()[0]
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (ticket_id, session['user_id'], message), fetchone=True, commit=True)
 
-    # Notify the other party (user if admin/manager responded, admin/manager if user responded)
-    if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
+    response_id = response_row[0] if response_row else None
+
+    # Notificações
+    if is_staff:
         log_event(ticket['user_id'], f"O suporte respondeu ao seu ticket #{ticket_id}.", ticket_id)
-        notify_user_ticket_update(ticket['user_id'], ticket, 'response_admin')
-        
-        # Send Telegram notification for admin response
+        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'response_admin')
+
         try:
             admin_name = session.get('user_name', 'Administrador')
             assignee = assigned_user['name'] if assigned_user and 'name' in assigned_user else None
@@ -988,14 +1313,15 @@ def api_create_ticket_response(ticket_id):
         except Exception as e:
             print(f"Erro ao enviar notificação de resposta admin: {str(e)}")
     else:
-        # Notify all admins and managers
-        cur.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
-        staff_users = cur.fetchall()
+        staff_users = run_query(
+            "SELECT id FROM users WHERE is_admin = TRUE",
+            fetchall=True,
+            dict_cursor=True
+        )
         for staff in staff_users:
             log_event(staff['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
-            push_event(staff['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': ticket})
-        
-        # Send Telegram notification for user response
+            push_event(staff['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': dict(ticket)})
+
         try:
             user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
             assignee = assigned_user['name'] if assigned_user and 'name' in assigned_user else None
@@ -1015,22 +1341,32 @@ def api_create_ticket_response(ticket_id):
         except Exception as e:
             print(f"Erro ao enviar notificação de resposta usuário: {str(e)}")
 
-    cur.close()
-    conn.close()
-    return jsonify({'success': True, 'response_id': response_id})
+    # Retorna também a data de criação do ticket formatada
+    created_at_formatted = format_date(ticket.get('created_at'))
+
+    return jsonify({
+        'success': True,
+        'response_id': response_id,
+        'ticket_created_at': created_at_formatted
+    })
+
 
 # Admin General Settings API
 @app.route('/api/admin/settings', methods=['GET'])
 def api_admin_get_settings():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT key, value FROM settings')
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+
+    rows = run_query(
+        "SELECT key, value FROM settings",
+        fetchall=True,
+        dict_cursor=True
+    )
+
     data = {row['key']: row['value'] for row in rows}
+
     return jsonify({
         'company_name': data.get('company_name', ''),
         'support_email': data.get('support_email', ''),
@@ -1044,180 +1380,211 @@ def api_admin_get_settings():
         'telegram_topic_cancelled': data.get('telegram_topic_cancelled', '')
     })
 
+
 @app.route('/api/admin/settings', methods=['PUT'])
 def api_admin_update_settings():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json() or {}
-    allowed_keys = {'company_name', 'support_email', 'support_phone', 'telegram_bot_token', 'telegram_group_id', 'telegram_topic_new_tickets', 'telegram_topic_messages', 'telegram_topic_assignments', 'telegram_topic_closed', 'telegram_topic_cancelled'}
-    conn = get_db_connection()
-    cur = conn.cursor()
-    for k in allowed_keys:
-        if k in data:
-            cur.execute('INSERT INTO settings(key, value) VALUES(%s, %s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', (k, str(data[k])))
-    cur.close()
-    conn.close()
+    allowed_keys = {
+        'company_name', 'support_email', 'support_phone',
+        'telegram_bot_token', 'telegram_group_id',
+        'telegram_topic_new_tickets', 'telegram_topic_messages',
+        'telegram_topic_assignments', 'telegram_topic_closed',
+        'telegram_topic_cancelled'
+    }
+
+    # Filtra apenas as chaves permitidas que foram enviadas
+    filtered_items = [(k, str(data[k])) for k in allowed_keys if k in data]
+
+    if not filtered_items:
+        return jsonify({'error': 'Nenhuma chave válida enviada'}), 400
+
+    # Monta a cláusula VALUES dinamicamente
+    values_sql = ", ".join(["(%s, %s)"] * len(filtered_items))
+    params = [item for pair in filtered_items for item in pair]  # flatten
+
+    run_query(f"""
+        INSERT INTO settings (key, value)
+        VALUES {values_sql}
+        ON CONFLICT (key) DO UPDATE
+        SET value = EXCLUDED.value
+    """, params, commit=True)
+
     return jsonify({'success': True})
+
 
 @app.route('/api/admin/telegram/test', methods=['POST'])
 def api_test_telegram():
     """Testa a conexão com o bot do Telegram"""
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
+
     data = request.get_json() or {}
     bot_token = data.get('bot_token', '').strip()
     group_id = data.get('group_id', '').strip()
-    
+
     if not bot_token or not group_id:
         return jsonify({'error': 'Token do bot e ID do grupo são obrigatórios'}), 400
-    
+
+    import requests
+
     try:
-        import requests
-        
-        # Test bot token
-        bot_url = f"https://api.telegram.org/bot{bot_token}/getMe"
-        bot_response = requests.get(bot_url, timeout=10)
-        
-        if bot_response.status_code != 200:
+        # Testa o token do bot
+        bot_resp = requests.get(f"https://api.telegram.org/bot{bot_token}/getMe", timeout=10)
+        bot_data = bot_resp.json() if bot_resp.ok else {}
+
+        if not bot_resp.ok or not bot_data.get('ok'):
             return jsonify({
-                'success': False, 
+                'success': False,
                 'error': 'Token do bot inválido ou bot não encontrado'
             }), 400
-        
-        bot_info = bot_response.json()
-        if not bot_info.get('ok'):
+
+        bot_name = bot_data.get('result', {}).get('username', 'Bot')
+
+        # Envia mensagem de teste para o grupo
+        test_message = (
+            "\U0001F916 <b>Teste de Conexão</b>\n\n"
+            f"Bot <b>@{bot_name}</b> conectado com sucesso!\n"
+            "Sistema HelpDesk configurado."
+        )
+
+        msg_resp = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            data={'chat_id': group_id, 'text': test_message, 'parse_mode': 'HTML'},
+            timeout=10
+        )
+        msg_data = msg_resp.json() if msg_resp.ok else {}
+
+        if not msg_resp.ok or not msg_data.get('ok'):
             return jsonify({
-                'success': False, 
-                'error': 'Token do bot inválido'
+                'success': False,
+                'error': f"Erro ao enviar mensagem: {msg_data.get('description', 'Verifique o ID do grupo e se o bot foi adicionado.')}"
             }), 400
-        
-        bot_name = bot_info.get('result', {}).get('username', 'Bot')
-        
-        # Test sending message to group
-        test_message = f"\U0001F916 <b>Teste de Conexão</b>\n\nBot <b>@{bot_name}</b> conectado com sucesso!\nSistema HelpDesk configurado."
-        
-        message_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        message_data = {
-            'chat_id': group_id,
-            'text': test_message,
-            'parse_mode': 'HTML'
-        }
-        
-        message_response = requests.post(message_url, data=message_data, timeout=10)
-        
-        if message_response.status_code != 200:
-            return jsonify({
-                'success': False, 
-                'error': 'Não foi possível enviar mensagem para o grupo. Verifique o ID do grupo e se o bot foi adicionado ao grupo.'
-            }), 400
-        
-        message_result = message_response.json()
-        if not message_result.get('ok'):
-            error_description = message_result.get('description', 'Erro desconhecido')
-            return jsonify({
-                'success': False, 
-                'error': f'Erro ao enviar mensagem: {error_description}'
-            }), 400
-        
+
         return jsonify({
-            'success': True, 
+            'success': True,
             'message': f'Conexão testada com sucesso! Bot @{bot_name} pode enviar mensagens para o grupo.'
         })
-        
+
     except requests.RequestException as e:
-        return jsonify({
-            'success': False, 
-            'error': f'Erro de conexão: {str(e)}'
-        }), 500
+        return jsonify({'success': False, 'error': f'Erro de conexão: {e}'}), 500
     except Exception as e:
-        return jsonify({
-            'success': False, 
-            'error': f'Erro interno: {str(e)}'
-        }), 500
+        return jsonify({'success': False, 'error': f'Erro interno: {e}'}), 500
+
 
 @app.route('/api/admin/administrators', methods=['GET'])
 def api_get_administrators():
-    """API endpoint to get list of administrators for ticket assignment"""
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """API endpoint para listar administradores disponíveis para atribuição de tickets"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('''
-        SELECT id, name, email
-        FROM users 
-        WHERE role IN ('admin', 'manager') 
-        ORDER BY name
-    ''')
-    administrators = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return jsonify(administrators)
+
+    print("=== BUSCANDO ADMINISTRADORES ===")
+
+    try:
+        administrators = run_query("""
+            SELECT id, name, email
+            FROM users
+            WHERE role IN ('admin', 'manager')
+            ORDER BY name
+        """, fetchall=True, dict_cursor=True)
+
+        print(f"Encontrados {len(administrators)} administradores:")
+        for admin in administrators:
+            print(f"  - {admin['name']} (ID: {admin['id']})")
+
+        return jsonify(administrators)
+
+    except Exception as e:
+        print(f"Erro ao buscar administradores: {str(e)}")
+        return jsonify({'error': 'Erro interno ao buscar administradores'}), 500
+
 
 @app.route('/api/admin/tickets/<int:ticket_id>/assign', methods=['PUT'])
 def api_admin_assign_ticket(ticket_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Atribui um ticket a um administrador ou gerente"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
+
+    print(f"=== ATRIBUIÇÃO DE TICKET {ticket_id} ===")
+
+    data = request.get_json() or {}
     assigned_to = data.get('assigned_to')
-    
+
     if not assigned_to:
+        print("ERRO: ID do administrador não fornecido")
         return jsonify({'error': 'ID do administrador é obrigatório'}), 400
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
+
     try:
-        # Verificar se o ticket existe e buscar nome do usuário
-        cur.execute('''
-            SELECT t.*, u.name as user_name
+        # Verificar se o ticket existe
+        ticket = run_query("""
+            SELECT t.*, u.name AS user_name
             FROM tickets t
             LEFT JOIN users u ON t.user_id = u.id
             WHERE t.id = %s
-        ''', (ticket_id,))
-        ticket = cur.fetchone()
+        """, (ticket_id,), fetchone=True, dict_cursor=True)
+
         if not ticket:
+            print(f"ERRO: Ticket {ticket_id} não encontrado")
             return jsonify({'error': 'Ticket não encontrado'}), 404
-        
-        # Verificar se o usuário a ser atribuído é admin ou manager
-        cur.execute("SELECT * FROM users WHERE id = %s AND (role = 'admin' OR role = 'manager')", (assigned_to,))
-        assigned_user = cur.fetchone()
+
+        # Verificar se o usuário é admin/manager
+        assigned_user = run_query("""
+            SELECT name, email FROM users
+            WHERE id = %s AND role IN ('admin', 'manager')
+        """, (assigned_to,), fetchone=True, dict_cursor=True)
+
         if not assigned_user:
+            print(f"ERRO: Usuário {assigned_to} não é administrador")
             return jsonify({'error': 'Usuário não é um administrador ou gerente'}), 400
-        
+
+        print(f"Atribuindo ticket {ticket_id} para {assigned_user['name']}")
+
         # Atribuir o ticket
-        cur.execute('UPDATE tickets SET assigned_to = %s, updated_at = NOW() WHERE id = %s',
-                     (assigned_to, ticket_id))
-        
-        # Notificar o usuário sobre a atribuição
+        run_query("""
+            UPDATE tickets
+            SET assigned_to = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (assigned_to, ticket_id), commit=True)
+
+        # Log e notificações
         log_event(ticket['user_id'], f"Seu ticket #{ticket_id} foi atribuído ao administrador {assigned_user['name']}.", ticket_id)
-        
-        # Notificar o administrador atribuído
         log_event(assigned_to, f"Você foi designado para o ticket #{ticket_id}.", ticket_id)
-        
-        # Send special assignment notification to Telegram
+
+        # Notificação especial no Telegram
         try:
             user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
             ticket_type = ticket['type'] if ticket['type'] else 'N/A'
             ticket_priority = ticket['priority'] if ticket['priority'] else 'N/A'
-            ticket_subject = ticket['subject'] if ticket['subject'] else (ticket['description'][:50] if ticket['description'] else 'N/A')
-            
-            assignment_message = f"\U0001F464 <b>Chamado Atribuído</b>\n\n"
-            assignment_message += f"<b>ID:</b> #{ticket_id}\n"
-            assignment_message += f"<b>Responsável:</b> {assigned_user['name']}\n"
-            assignment_message += f"<b>Tipo:</b> {ticket_type}\n"
-            assignment_message += f"<b>Prioridade:</b> {ticket_priority}\n"
-            assignment_message += f"<b>Assunto:</b> {ticket_subject}\n"
-            assignment_message += f"<b>Usuário:</b> {user_name}"
-            
+            ticket_subject = ticket['subject'] if ticket['subject'] else (
+                ticket['description'][:50] if ticket['description'] else 'N/A'
+            )
+
+            assignment_message = (
+                "\U0001F464 <b>Chamado Atribuído</b>\n\n"
+                f"<b>ID:</b> #{ticket_id}\n"
+                f"<b>Responsável:</b> {assigned_user['name']}\n"
+                f"<b>Tipo:</b> {ticket_type}\n"
+                f"<b>Prioridade:</b> {ticket_priority}\n"
+                f"<b>Assunto:</b> {ticket_subject}\n"
+                f"<b>Usuário:</b> {user_name}"
+            )
+
             send_telegram_notification(assignment_message, 'assigned')
         except Exception as e:
             print(f"Erro ao enviar notificação de atribuição: {str(e)}")
-        
+
         # Push notifications
-        notify_user_ticket_update(ticket['user_id'], ticket, 'assigned')
+        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'assigned')
         push_event(assigned_to, {
             'type': 'ticket_update',
             'event': 'assigned_to_you',
@@ -1227,274 +1594,461 @@ def api_admin_assign_ticket(ticket_id):
                 'priority': ticket['priority']
             }
         })
-        
-        return jsonify({'success': True, 'assigned_to': assigned_user['name']})
+
+        # Buscar ticket atualizado para retorno com datas formatadas
+        updated_ticket = run_query("""
+            SELECT id, subject, priority, created_at, updated_at, closed_at
+            FROM tickets
+            WHERE id = %s
+        """, (ticket_id,), fetchone=True, dict_cursor=True)
+
+        if updated_ticket:
+            updated_ticket = dict(updated_ticket)
+            updated_ticket['created_at'] = format_date(updated_ticket.get('created_at'))
+            updated_ticket['updated_at'] = format_date(updated_ticket.get('updated_at'))
+            updated_ticket['closed_at'] = format_date(updated_ticket.get('closed_at'))
+
+        return jsonify({
+            'success': True,
+            'assigned_to': assigned_user['name'],
+            'message': f'Ticket atribuído para {assigned_user["name"]}',
+            'ticket': updated_ticket
+        })
+
     except Exception as e:
-        print(f"Error assigning ticket: {str(e)}")
-        return jsonify({'error': 'Erro interno do servidor'}), 500
-    finally:
-        cur.close()
-        conn.close()
+        print(f"Erro ao atribuir ticket: {str(e)}")
+        return jsonify({'error': 'Erro interno ao atribuir ticket'}), 500
+
 
 @app.route('/api/admin/tickets/<int:ticket_id>/cancel', methods=['PUT'])
 def api_admin_cancel_ticket(ticket_id):
     """Cancela um ticket (apenas gerentes)"""
     if 'user_id' not in session or session.get('user_role') != 'manager':
         return jsonify({'error': 'Apenas gerentes podem cancelar tickets'}), 403
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
+
+    print(f"=== CANCELAMENTO DO TICKET {ticket_id} ===")
+
     try:
         # Buscar ticket com nome do usuário
-        cur.execute('''
-            SELECT t.*, u.name as user_name
+        ticket = run_query("""
+            SELECT t.*, u.name AS user_name
             FROM tickets t
             LEFT JOIN users u ON t.user_id = u.id
             WHERE t.id = %s
-        ''', (ticket_id,))
-        ticket = cur.fetchone()
-        
+        """, (ticket_id,), fetchone=True, dict_cursor=True)
+
         if not ticket:
+            print(f"ERRO: Ticket {ticket_id} não encontrado")
             return jsonify({'error': 'Ticket não encontrado'}), 404
-        
-        # Verificar se o ticket não está já cancelado
+
+        # Verificar se já está cancelado
         if ticket['status'] == 'Cancelado':
+            print(f"ERRO: Ticket {ticket_id} já está cancelado")
             return jsonify({'error': 'Ticket já está cancelado'}), 400
-        
+
         # Cancelar ticket
-        cur.execute("UPDATE tickets SET status = 'Cancelado', updated_at = NOW() WHERE id = %s", (ticket_id,))
-        
-        # Log e notificações
+        run_query("""
+            UPDATE tickets
+            SET status = 'Cancelado', updated_at = NOW()
+            WHERE id = %s
+        """, (ticket_id,), commit=True)
+
         manager_name = session.get('user_name', 'Gerente')
+
+        # Log e notificações
         log_event(ticket['user_id'], f"Seu ticket #{ticket_id} foi cancelado pelo gerente {manager_name}.", ticket_id)
-        
-        # Notificar usuário
-        notify_user_ticket_update(ticket['user_id'], ticket, 'cancelled')
-        
-        # Enviar notificação Telegram
+        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'cancelled')
+
+        # Notificação no Telegram
         try:
             user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
             ticket_type = ticket['type'] if ticket['type'] else 'N/A'
             ticket_priority = ticket['priority'] if ticket['priority'] else 'N/A'
-            ticket_subject = ticket['subject'] if ticket['subject'] else (ticket['description'][:50] if ticket['description'] else 'N/A')
-            
-            cancel_message = f"\U0000274C <b>Chamado Cancelado</b>\n\n"
-            cancel_message += f"<b>ID:</b> #{ticket_id}\n"
-            cancel_message += f"<b>Cancelado por:</b> {manager_name}\n"
-            cancel_message += f"<b>Usuário:</b> {user_name}\n"
-            cancel_message += f"<b>Tipo:</b> {ticket_type}\n"
-            cancel_message += f"<b>Prioridade:</b> {ticket_priority}\n"
-            cancel_message += f"<b>Assunto:</b> {ticket_subject}"
-            
+            ticket_subject = ticket['subject'] if ticket['subject'] else (
+                ticket['description'][:50] if ticket['description'] else 'N/A'
+            )
+
+            cancel_message = (
+                "\U0000274C <b>Chamado Cancelado</b>\n\n"
+                f"<b>ID:</b> #{ticket_id}\n"
+                f"<b>Cancelado por:</b> {manager_name}\n"
+                f"<b>Usuário:</b> {user_name}\n"
+                f"<b>Tipo:</b> {ticket_type}\n"
+                f"<b>Prioridade:</b> {ticket_priority}\n"
+                f"<b>Assunto:</b> {ticket_subject}"
+            )
+
             send_telegram_notification(cancel_message, 'cancelled')
         except Exception as e:
             print(f"Erro ao enviar notificação de cancelamento: {str(e)}")
-        
-        return jsonify({'success': True})
-        
+
+        # Buscar ticket atualizado para retorno com datas formatadas
+        updated_ticket = run_query("""
+            SELECT id, subject, priority, status, created_at, updated_at, closed_at
+            FROM tickets
+            WHERE id = %s
+        """, (ticket_id,), fetchone=True, dict_cursor=True)
+
+        if updated_ticket:
+            updated_ticket = dict(updated_ticket)
+            updated_ticket['created_at'] = format_date(updated_ticket.get('created_at'))
+            updated_ticket['updated_at'] = format_date(updated_ticket.get('updated_at'))
+            updated_ticket['closed_at'] = format_date(updated_ticket.get('closed_at'))
+
+        return jsonify({
+            'success': True,
+            'message': f"Ticket #{ticket_id} cancelado com sucesso",
+            'ticket': updated_ticket
+        })
+
     except Exception as e:
         print(f"Erro ao cancelar ticket: {str(e)}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
-    finally:
-        cur.close()
-        conn.close()
+
 
 @app.route('/api/admin/tickets/<int:ticket_id>/reopen', methods=['PUT'])
 def api_admin_reopen_ticket(ticket_id):
     """Reabre um ticket fechado ou cancelado (apenas gerentes para tickets cancelados)"""
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
+
+    print(f"=== REABERTURA DO TICKET {ticket_id} ===")
+
     try:
         # Buscar ticket com nome do usuário
-        cur.execute('''
-            SELECT t.*, u.name as user_name
+        ticket = run_query("""
+            SELECT t.*, u.name AS user_name
             FROM tickets t
             LEFT JOIN users u ON t.user_id = u.id
             WHERE t.id = %s
-        ''', (ticket_id,))
-        ticket = cur.fetchone()
-        
+        """, (ticket_id,), fetchone=True, dict_cursor=True)
+
         if not ticket:
+            print(f"ERRO: Ticket {ticket_id} não encontrado")
             return jsonify({'error': 'Ticket não encontrado'}), 404
-        
+
         # Se o ticket foi cancelado, apenas gerentes podem reabrir
         if ticket['status'] == 'Cancelado' and session.get('user_role') != 'manager':
             return jsonify({'error': 'Apenas gerentes podem reabrir tickets cancelados'}), 403
+
         # Atualiza status para Aberto, limpa fechamento e quem fechou
-        cur.execute("UPDATE tickets SET status = 'Aberto', updated_at = NOW(), closed_at = NULL, closed_by = NULL WHERE id = %s", (ticket_id,))
-        # Notificações
+        run_query("""
+            UPDATE tickets
+            SET status = 'Aberto', updated_at = NOW(), closed_at = NULL, closed_by = NULL
+            WHERE id = %s
+        """, (ticket_id,), commit=True)
+
         user_id = ticket['user_id']
         assigned_to = ticket['assigned_to']
-        closed_by = ticket['closed_by'] if 'closed_by' in ticket else None
+        closed_by = ticket.get('closed_by')
+
         # Notificar usuário dono
         log_event(user_id, f"Seu ticket #{ticket_id} foi reaberto.", ticket_id)
-        notify_user_ticket_update(user_id, ticket, 'reopened')
+        notify_user_ticket_update(user_id, dict(ticket), 'reopened')
+
         # Notificar responsável (se houver)
         if assigned_to:
             log_event(assigned_to, f"Ticket #{ticket_id} foi reaberto.", ticket_id)
-            push_event(assigned_to, {'type': 'ticket_update', 'event': 'reopened', 'ticket': {'id': ticket['id'], 'subject': ticket['subject'], 'priority': ticket['priority']}})
+            push_event(assigned_to, {
+                'type': 'ticket_update',
+                'event': 'reopened',
+                'ticket': {
+                    'id': ticket['id'],
+                    'subject': ticket['subject'],
+                    'priority': ticket['priority']
+                }
+            })
+
         # Notificar quem fechou (se conhecido)
         if closed_by:
             log_event(closed_by, f"Ticket #{ticket_id} que você havia fechado foi reaberto.", ticket_id)
-            push_event(closed_by, {'type': 'ticket_update', 'event': 'reopened', 'ticket': {'id': ticket['id'], 'subject': ticket['subject'], 'priority': ticket['priority']}})
+            push_event(closed_by, {
+                'type': 'ticket_update',
+                'event': 'reopened',
+                'ticket': {
+                    'id': ticket['id'],
+                    'subject': ticket['subject'],
+                    'priority': ticket['priority']
+                }
+            })
+
         # Notificar todos os gerentes
-        cur.execute("SELECT id FROM users WHERE role = 'manager'")
-        managers = cur.fetchall()
+        managers = run_query(
+            "SELECT id FROM users WHERE role = 'manager'",
+            fetchall=True,
+            dict_cursor=True
+        )
         for m in managers:
             log_event(m['id'], f"Ticket #{ticket_id} foi reaberto.", ticket_id)
-            push_event(m['id'], {'type': 'ticket_update', 'event': 'reopened', 'ticket': {'id': ticket['id'], 'subject': ticket['subject'], 'priority': ticket['priority']}})
-        return jsonify({'success': True})
+            push_event(m['id'], {
+                'type': 'ticket_update',
+                'event': 'reopened',
+                'ticket': {
+                    'id': ticket['id'],
+                    'subject': ticket['subject'],
+                    'priority': ticket['priority']
+                }
+            })
+
+        # Buscar ticket atualizado para retorno com datas formatadas
+        updated_ticket = run_query("""
+            SELECT id, subject, priority, status, created_at, updated_at, closed_at
+            FROM tickets
+            WHERE id = %s
+        """, (ticket_id,), fetchone=True, dict_cursor=True)
+
+        if updated_ticket:
+            updated_ticket = dict(updated_ticket)
+            updated_ticket['created_at'] = format_date(updated_ticket.get('created_at'))
+            updated_ticket['updated_at'] = format_date(updated_ticket.get('updated_at'))
+            updated_ticket['closed_at'] = format_date(updated_ticket.get('closed_at'))
+
+        return jsonify({
+            'success': True,
+            'message': f"Ticket #{ticket_id} reaberto com sucesso",
+            'ticket': updated_ticket
+        })
+
     except Exception as e:
         print(f"Erro ao reabrir ticket: {str(e)}")
-        return jsonify({'error': 'Erro interno do servidor'}), 500
-    finally:
-        cur.close()
-        conn.close()
+        return jsonify({'error': 'Erro interno ao reabrir ticket'}), 500
 
-# Adicione estas rotas no app.py
 
 @app.route('/api/ticket-types', methods=['GET'])
 def api_get_ticket_types():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT * FROM ticket_types WHERE active = TRUE ORDER BY name')
-    ticket_types = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return jsonify(ticket_types)
+
+    ticket_types = run_query("""
+        SELECT * 
+        FROM ticket_types 
+        WHERE active = TRUE 
+        ORDER BY name
+    """, fetchall=True, dict_cursor=True)
+
+    return jsonify([dict(ticket_type) for ticket_type in ticket_types])
+
 
 @app.route('/api/ticket-types', methods=['POST'])
 def api_create_ticket_type():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Cria um novo tipo de chamado"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+
+    if not name:
+        return jsonify({'error': 'O nome do tipo de chamado é obrigatório'}), 400
+
+    print(f"=== CRIANDO TIPO DE CHAMADO: {name} ===")
+
     try:
-        cur.execute('''INSERT INTO ticket_types (name, description, active)
-                        VALUES (%s, %s, TRUE)''',
-                     (data['name'], data.get('description', '')))
-        cur.close()
-        conn.close()
+        run_query("""
+            INSERT INTO ticket_types (name, description, active)
+            VALUES (%s, %s, TRUE)
+        """, (name, description), commit=True)
+
         return jsonify({'success': True})
-    except psycopg2.IntegrityError:
-        cur.close()
-        conn.close()
+
+    except IntegrityError:
+        print(f"ERRO: Tipo de chamado '{name}' já existe")
         return jsonify({'error': 'Tipo de chamado já existe'}), 400
+
+    except Exception as e:
+        print(f"Erro ao criar tipo de chamado: {str(e)}")
+        return jsonify({'error': 'Erro interno ao criar tipo de chamado'}), 500
+
 
 @app.route('/api/ticket-types/<int:type_id>', methods=['PUT'])
 def api_update_ticket_type(type_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Atualiza um tipo de chamado existente"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''UPDATE ticket_types SET name = %s, description = %s, active = %s
-                    WHERE id = %s''',
-                 (data['name'], data.get('description', ''), data.get('active', True), type_id))
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True})
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    active = data.get('active', True)
+
+    if not name:
+        return jsonify({'error': 'O nome do tipo de chamado é obrigatório'}), 400
+
+    print(f"=== ATUALIZANDO TIPO DE CHAMADO ID {type_id} ===")
+
+    try:
+        run_query("""
+            UPDATE ticket_types
+            SET name = %s, description = %s, active = %s
+            WHERE id = %s
+        """, (name, description, active, type_id), commit=True)
+
+        return jsonify({
+            'success': True,
+            'message': f"Tipo de chamado '{name}' atualizado com sucesso"
+        })
+
+    except Exception as e:
+        print(f"Erro ao atualizar tipo de chamado: {str(e)}")
+        return jsonify({'error': 'Erro interno ao atualizar tipo de chamado'}), 500
+
 
 @app.route('/api/ticket-types/<int:type_id>', methods=['DELETE'])
 def api_delete_ticket_type(type_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Marca um tipo de chamado como inativo (soft delete)"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # Instead of deleting, we mark as inactive
-    cur.execute('UPDATE ticket_types SET active = FALSE WHERE id = %s', (type_id,))
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True})
+
+    print(f"=== MARCANDO TIPO DE CHAMADO ID {type_id} COMO INATIVO ===")
+
+    try:
+        run_query("""
+            UPDATE ticket_types
+            SET active = FALSE
+            WHERE id = %s
+        """, (type_id,), commit=True)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Erro ao inativar tipo de chamado: {str(e)}")
+        return jsonify({'error': 'Erro interno ao inativar tipo de chamado'}), 500
+
 
 @app.route('/api/ticket-statuses', methods=['GET'])
 def api_get_ticket_statuses():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Lista todos os status de ticket ativos"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    cur.execute('SELECT * FROM ticket_statuses WHERE active = TRUE ORDER BY name')
-    ticket_statuses = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return jsonify(ticket_statuses)
+
+    print("=== LISTANDO STATUS DE TICKET ATIVOS ===")
+
+    try:
+        ticket_statuses = run_query("""
+            SELECT *
+            FROM ticket_statuses
+            WHERE active = TRUE
+            ORDER BY name
+        """, fetchall=True, dict_cursor=True)
+
+        return jsonify([dict(status) for status in ticket_statuses])
+    except Exception as e:
+        print(f"Erro ao buscar status de ticket: {str(e)}")
+        return jsonify({'error': 'Erro interno ao buscar status de ticket'}), 500
+
 
 @app.route('/api/ticket-statuses', methods=['POST'])
 def api_create_ticket_status():
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Cria um novo status de chamado"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    color = data.get('color', '#808080').strip()
+
+    if not name:
+        return jsonify({'error': 'O nome do status é obrigatório'}), 400
+
+    print(f"=== CRIANDO STATUS DE CHAMADO: {name} ===")
+
     try:
-        cur.execute('''INSERT INTO ticket_statuses (name, color, active)
-                        VALUES (%s, %s, TRUE)''',
-                     (data['name'], data.get('color', '#808080'),))
-        cur.close()
-        conn.close()
+        run_query("""
+            INSERT INTO ticket_statuses (name, color, active)
+            VALUES (%s, %s, TRUE)
+        """, (name, color), commit=True)
+
         return jsonify({'success': True})
-    except psycopg2.IntegrityError:
-        cur.close()
-        conn.close()
+
+    except IntegrityError:
+        print(f"ERRO: Status de chamado '{name}' já existe")
         return jsonify({'error': 'Status de chamado já existe'}), 400
+
+    except Exception as e:
+        print(f"Erro ao criar status de chamado: {str(e)}")
+        return jsonify({'error': 'Erro interno ao criar status de chamado'}), 500
+
 
 @app.route('/api/ticket-statuses/<int:status_id>', methods=['PUT'])
 def api_update_ticket_status(status_id):
-    if 'user_id' not in session or not (session.get('is_admin') or session.get('user_role') in ['admin', 'manager']):
+    """Atualiza um status de chamado existente"""
+    if 'user_id' not in session or not (
+        session.get('is_admin') or session.get('user_role') in ['admin', 'manager']
+    ):
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''UPDATE ticket_statuses SET name = %s, color = %s, active = %s
-                    WHERE id = %s''',
-                 (data['name'], data.get('color', '#808080'), data.get('active', True), status_id))
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True})
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    color = data.get('color', '#808080').strip()
+    active = data.get('active', True)
+
+    if not name:
+        return jsonify({'error': 'O nome do status é obrigatório'}), 400
+
+    print(f"=== ATUALIZANDO STATUS DE CHAMADO ID {status_id} ===")
+
+    try:
+        run_query("""
+            UPDATE ticket_statuses
+            SET name = %s, color = %s, active = %s
+            WHERE id = %s
+        """, (name, color, active, status_id), commit=True)
+
+        return jsonify({
+            'success': True,
+            'message': f"Status de chamado '{name}' atualizado com sucesso"
+        })
+
+    except Exception as e:
+        print(f"Erro ao atualizar status de chamado: {str(e)}")
+        return jsonify({'error': 'Erro interno ao atualizar status de chamado'}), 500
+
 
 @app.route('/api/ticket-statuses/<int:status_id>', methods=['DELETE'])
 def api_delete_ticket_status(status_id):
+    """Marca um status de chamado como inativo (soft delete)"""
     if 'user_id' not in session or session.get('user_role') not in ['admin', 'manager']:
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # Instead of deleting, we mark as inactive
-    cur.execute('UPDATE ticket_statuses SET active = FALSE WHERE id = %s', (status_id,))
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True})
+
+    print(f"=== MARCANDO STATUS DE CHAMADO ID {status_id} COMO INATIVO ===")
+
+    try:
+        run_query("""
+            UPDATE ticket_statuses
+            SET active = FALSE
+            WHERE id = %s
+        """, (status_id,), commit=True)
+
+        return jsonify({
+            'success': True,
+            'message': f"Status de chamado ID {status_id} marcado como inativo"
+        })
+
+    except Exception as e:
+        print(f"Erro ao inativar status de chamado: {str(e)}")
+        return jsonify({'error': 'Erro interno ao inativar status de chamado'}), 500
+
 
 @app.route('/debug')
 def debug_frontend():
     """Página de debug para testar o frontend"""
     return send_from_directory('.', 'debug_frontend.html')
 
-# Inicialização da aplicação
+# Substituir a parte final do arquivo por esta:
+
 if __name__ == '__main__':
-    # Inicializa o banco de dados
     init_database()
-    # Iniciar a aplicação
+
     app.run(host='0.0.0.0', port=5000, debug=True)
