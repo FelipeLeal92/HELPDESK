@@ -860,25 +860,18 @@ def api_admin_stats():
     stats = run_query("""
         SELECT
             COUNT(*) AS total,
-            COUNT(*) FILTER (
-                WHERE ts.name IN ('Aberto', 'Em Andamento', 'Pendente')
-            ) AS open,
-            COUNT(*) FILTER (
-                WHERE ts.name IN ('Resolvido', 'Fechado', 'Concluído', 'Finalizado')
-            ) AS resolved
-        FROM tickets t
-        LEFT JOIN ticket_statuses ts ON t.status_id = ts.id
+            COUNT(*) FILTER (WHERE status IN ('Aberto', 'Em Andamento', 'Pendente')) AS open,
+            COUNT(*) FILTER (WHERE status IN ('Resolvido', 'Fechado', 'Concluído', 'Finalizado')) AS resolved
+        FROM tickets
     """, fetchone=True, dict_cursor=True) or {'total': 0, 'open': 0, 'resolved': 0}
 
     return jsonify({
-        'stats': {
             'total': stats['total'],
             'open': stats['open'],
-            'resolved': stats['resolved']
-        },
+            'resolved': stats['resolved'],
+        
         'success': True
     })
-
 
 @app.route('/api/admin/tickets/recent', methods=['GET'])
 def api_admin_tickets_recent():
@@ -1852,7 +1845,13 @@ def api_create_ticket_type():
         run_query("""
             INSERT INTO ticket_types (name, description, active)
             VALUES (%s, %s, TRUE)
-        """, (name, description), commit=True)
+                  ON CONFLICT (name)
+                  DO UPDATE SET 
+                        description = EXCLUDED.description, 
+                        active = TRUE
+                        WHERE ticket_types.active = FALSE
+            RETURNING id
+        """, (name, description), fetchone=True, commit=True)
 
         return jsonify({'success': True})
 
@@ -1968,6 +1967,12 @@ def api_create_ticket_status():
         run_query("""
             INSERT INTO ticket_statuses (name, color, active)
             VALUES (%s, %s, TRUE)
+            ON CONFLICT (name)
+            DO UPDATE SET 
+                color = EXCLUDED.color, 
+                active = TRUE
+            WHERE ticket_statuses.active = FALSE
+            RETURNING id
         """, (name, color), commit=True)
 
         return jsonify({'success': True})
@@ -2010,6 +2015,11 @@ def api_update_ticket_status(status_id):
             'success': True,
             'message': f"Status de chamado '{name}' atualizado com sucesso"
         })
+
+    except IntegrityError as e:
+        if 'unique constraint' in str(e).lower():
+            return jsonify({'error': 'Status de chamado já existe'}), 400
+        raise e
 
     except Exception as e:
         print(f"Erro ao atualizar status de chamado: {str(e)}")

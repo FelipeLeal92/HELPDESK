@@ -196,16 +196,67 @@ const AdminDashboard = (function() {
     // Funções de carregamento de dados
     function loadDashboardData() {
         fetch('/api/admin/stats')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) { 
+                    throw new Error(`HTTP error! status: ${response.status}`); 
+                } 
+                return response.json();
+        })
+
             .then(data => {
-                document.getElementById('total-tickets-admin').textContent = data.total || 0;
-                document.getElementById('open-tickets-admin').textContent = data.open || 0;
-                document.getElementById('resolved-tickets-admin').textContent = data.resolved || 0;
-            })
-            .catch(error => console.error('Error loading dashboard data:', error));
-        
-        loadRecentTickets();
+                const total = data.total || 0;
+                const open = data.open || 0;
+                const resolved = data.resolved || 0;
+            
+                console.log('Dashboard stats:', { total, open, resolved }); 
+
+                // Atualizar os cards
+                updateCardValue('total-tickets-admin', total);
+                updateCardValue('open-tickets-admin', open);
+                updateCardValue('resolved-tickets-admin', resolved);
+        })
+            .catch(error => {
+                console.error('Error loading dashboard data:', error);
+                updateCardValue('total-tickets-admin', 0);
+                updateCardValue('open-tickets-admin', 0);
+                updateCardValue('resolved-tickets-admin', 0);
+        });
+    
+        loadRecentTickets()
     }
+        
+    // Função auxiliar para atualizar valores com animação
+    function updateCardValue(elementId, newValue) {
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.error(`Element with id ${elementId} not found.`);
+            return;
+        }
+        
+        const currentValue = parseInt(element.textContent) || 0;
+        const targetValue = parseInt(newValue) || 0;
+        
+        if (currentValue === targetValue) {
+            return;
+        }
+        
+        // Animação simples de contagem
+        const increment = targetValue > currentValue ? 1 : -1;
+        const duration = Math.abs(targetValue - currentValue) * 20; // 20ms por unidade
+        
+        let current = currentValue;
+        const step = () => {
+            current += increment;
+            element.textContent = current;
+            
+            if (current !== targetValue) {
+                requestAnimationFrame(step);
+            }
+        };
+        
+        requestAnimationFrame(step);
+    }
+
 
     function loadRecentTickets() {
         fetch('/api/admin/tickets/recent')
