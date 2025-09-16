@@ -624,7 +624,7 @@ def api_help_center():
     return jsonify({'success': True})
 
 
-@app.route('/api/tickets', methods=['GET', 'POST'])
+@app.route('/api/tickets', methods=['GET'])
 def api_get_tickets():
     if 'user_id' not in session:
         print("ERRO: Usuário não está na sessão")
@@ -770,78 +770,186 @@ def api_get_ticket(ticket_id):
 def api_create_ticket():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    def after_insert_notify(conn, ticket_id):
-        cur = conn.cursor(cursor_factory=DictCursor)
-        # Build ticket dict for notifications
-        cur.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s', (ticket_id,))
-        t = cur.fetchone()
-        if t:
-            log_event(t['user_id'], f"Novo ticket criado: {t['subject']}", ticket_id)
-            notify_user_ticket_update(t['user_id'], t, 'created')
-            cur.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
-            admins = cur.fetchall()
-            for admin in admins:
-                log_event(admin['id'], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
-                push_event(admin['id'], {'type': 'ticket_update', 'event': 'created', 'ticket': t})
-        cur.close()
-    # If multipart/form-data (supports attachments)
-    if request.content_type and 'multipart/form-data' in request.content_type:
-        form = request.form
-        type_ = form.get('type')
-        priority = form.get('priority')
-        subject = form.get('subject', '')
-        description = form.get('description')
+    
+    print("=== API CREATE TICKET ===")
+    
+    try:
+        # If multipart/form-data (supports attachments)
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            form = request.form
+            type_ = form.get('type')
+            priority = form.get('priority')
+            subject = form.get('subject', '')
+            description = form.get('description')
+            
+            print(f"Creating multipart/form-data ticket - Type: {type_}, Priority: {priority}, Subject: {subject}")
+            
+            if not type_ or not priority or not description:
+                print("Missing required fields")
+                return jsonify({'error': 'Campos obrigatórios ausentes'}), 400
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            # Insert ticket first
+            cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
+                        (session['user_id'], type_, priority, subject, description, 'Aberto'))
+            ticket_id = cur.fetchone()[0]
+            print(f"Ticket created with ID: {ticket_id}")
+            
+            # Handle attachments
+            files = request.files.getlist('attachments')
+            print(f"Received {len(files)} files")
+            
+            for f in files:
+                if f and allowed_file(f.filename):
+                    # Enforce per-file size limit (10MB)
+                    f.seek(0, os.SEEK_END)
+                    size = f.tell()
+                    f.seek(0)
+                    print(f"File {f.filename} size: {size} bytes")
+                    if size > MAX_FILE_SIZE:
+                        conn.rollback()
+                        cur.close()
+                        conn.close()
+                        print(f"File too large: {f.filename}")
+                        return jsonify({'error': f'Arquivo muito grande: {f.filename}. Limite 10MB por arquivo.'}), 400
+                    original = secure_filename(f.filename)
+                    unique_name = f"{ticket_id}_{secrets.token_hex(4)}_{original}"
+                    save_path = os.path.join(UPLOAD_FOLDER, unique_name)
+                    f.save(save_path)
+                    filesize = os.path.getsize(save_path)
+                    print(f"Saved file: {unique_name} ({filesize} bytes)")
+                    cur.execute('''INSERT INTO attachments (ticket_id, filename, filepath, filesize)
+                                   VALUES (%s, %s, %s, %s)''',
+                                (ticket_id, original, unique_name, filesize))
+                elif f:
+                    print(f"Invalid file extension: {f.filename}")
+                    conn.rollback()
+                    cur.close()
+                    conn.close()
+                    return jsonify({'error': f'Extensão não permitida: {f.filename}'}), 400
+            
+            # Commit the transaction
+            conn.commit()
+            
+            # Get ticket info for notifications
+            cur.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s', (ticket_id,))
+            ticket = cur.fetchone()
+            
+            # Close cursor and connection
+            cur.close()
+            conn.close()
+            
+            if ticket:
+                print(f"Ticket data: {ticket}")
+                # Notify user about new ticket creation
+                log_event(ticket[1], f"Novo ticket criado: {ticket[3]}", ticket_id)
+                ticket_dict = {
+                    'id': ticket[0],
+                    'user_id': ticket[1],
+                    'type': ticket[2],
+                    'priority': ticket[3],
+                    'subject': ticket[4],
+                    'description': ticket[5],
+                    'status': ticket[6]
+                }
+                notify_user_ticket_update(ticket[1], ticket_dict, 'created')
+                
+                # Notify admins
+                conn2 = get_db_connection()
+                cur2 = conn2.cursor()
+                cur2.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
+                admins = cur2.fetchall()
+                cur2.close()
+                conn2.close()
+                
+                for admin in admins:
+                    log_event(admin[0], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
+                    push_event(admin[0], {
+                        'type': 'ticket_update',
+                        'event': 'created',
+                        'ticket': ticket_dict
+                    })
+            
+            print("Ticket creation successful")
+            return jsonify({'success': True, 'ticket_id': ticket_id})
+        
+        # JSON fallback (without attachments)
+        data = request.get_json()
+        print(f"Creating JSON ticket: {data}")
+        
+        if not data:
+            print("No JSON data received")
+            return jsonify({'error': 'Invalid JSON data'}), 400
+        
+        type_ = data.get('type')
+        priority = data.get('priority')
+        subject = data.get('subject', '')
+        description = data.get('description')
+        
         if not type_ or not priority or not description:
+            print("Missing required fields in JSON")
             return jsonify({'error': 'Campos obrigatórios ausentes'}), 400
+        
         conn = get_db_connection()
         cur = conn.cursor()
+        
+        # Insert ticket
         cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
                     (session['user_id'], type_, priority, subject, description, 'Aberto'))
         ticket_id = cur.fetchone()[0]
-        files = request.files.getlist('attachments')
-        for f in files:
-            if f and allowed_file(f.filename):
-                # Enforce per-file size limit (10MB)
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                f.seek(0)
-                if size > MAX_FILE_SIZE:
-                    conn.rollback()
-                    cur.close()
-                    conn.close()
-                    return jsonify({'error': f'Arquivo muito grande: {f.filename}. Limite 10MB por arquivo.'}), 400
-                original = secure_filename(f.filename)
-                unique_name = f"{ticket_id}_{secrets.token_hex(4)}_{original}"
-                save_path = os.path.join(UPLOAD_FOLDER, unique_name)
-                f.save(save_path)
-                filesize = os.path.getsize(save_path)
-                cur.execute('''INSERT INTO attachments (ticket_id, filename, filepath, filesize)
-                               VALUES (%s, %s, %s, %s)''',
-                            (ticket_id, original, unique_name, filesize))
-            elif f:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({'error': f'Extensão não permitida: {f.filename}'}), 400
-        after_insert_notify(conn, ticket_id)
+        
+        # Get ticket info for notifications
+        cur.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s', (ticket_id,))
+        ticket = cur.fetchone()
+        
+        # Commit and close
+        conn.commit()
         cur.close()
         conn.close()
+        
+        if ticket:
+            print(f"Ticket data: {ticket}")
+            # Notify user
+            log_event(ticket[1], f"Novo ticket criado: {ticket[3]}", ticket_id)
+            ticket_dict = {
+                'id': ticket[0],
+                'user_id': ticket[1],
+                'type': ticket[2],
+                'priority': ticket[3],
+                'subject': ticket[4],
+                'description': ticket[5],
+                'status': ticket[6]
+            }
+            notify_user_ticket_update(ticket[1], ticket_dict, 'created')
+            
+            # Notify admins
+            conn2 = get_db_connection()
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
+            admins = cur2.fetchall()
+            cur2.close()
+            conn2.close()
+            
+            for admin in admins:
+                log_event(admin[0], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
+                push_event(admin[0], {
+                    'type': 'ticket_update',
+                    'event': 'created',
+                    'ticket': ticket_dict
+                })
+        
+        print("JSON ticket creation successful")
         return jsonify({'success': True, 'ticket_id': ticket_id})
-    # JSON fallback (without attachments)
-    data = request.get_json()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
-                (session['user_id'], data['type'], data['priority'], 
-                 data.get('subject', ''), data['description'], 'Aberto'))
-    ticket_id = cur.fetchone()[0]
-    after_insert_notify(conn, ticket_id)
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True, 'ticket_id': ticket_id})
+        
+    except Exception as e:
+        print(f"Error creating ticket: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Erro interno ao criar chamado: {str(e)}'}), 500
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
