@@ -747,47 +747,55 @@ const UserDashboard = (function() {
         const sendButton = document.getElementById('send-support-message');
         if (!sendButton) return;
         
-        sendButton.addEventListener('click', function() {
-            const ticketId = document.getElementById('support-ticket-select').value;
-            const message = document.getElementById('support-message').value.trim();
-            
-            if (!ticketId) {
-                Common.showToast('Selecione um ticket para enviar a mensagem.');
-                return;
-            }
-            
-            if (!message) {
-                Common.showToast('Digite uma mensagem.');
-                return;
-            }
+        if (!sendButton._listenerAdded) {
+            sendButton._listenerAdded = true;
+            sendButton.addEventListener('click', function() {
+                const ticketId = document.getElementById('support-ticket-select').value;
+                const message = document.getElementById('support-message').value.trim();
+                
+                if (!ticketId) {
+                    Common.showToast('Selecione um ticket para enviar a mensagem.');
+                    return;
+                }
+                
+                if (!message) {
+                    Common.showToast('Digite uma mensagem.');
+                    return;
+                }
 
-            fetch(`/api/tickets/${ticketId}/responses`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ message: message }),
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    document.getElementById('support-message').value = '';
-                    loadSupportMessages(ticketId);
-                    Common.showToast('Mensagem enviada com sucesso!');
-                } else {
-                    Common.showToast('Erro ao enviar mensagem: ' + (data.error || 'Erro desconhecido'));
-                }
-            })
-            .catch(error => {
-                console.error('Error sending message:', error);
-                Common.showToast('Erro ao enviar mensagem.');
+                // Guard de duplo clique: desabilita o botão durante o envio
+                if (sendButton.disabled) return;
+                sendButton.disabled = true;
+
+                fetch(`/api/tickets/${ticketId}/responses`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message }),
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('support-message').value = '';
+                        loadSupportMessages(ticketId);
+                        Common.showToast('Mensagem enviada com sucesso!');
+                    } else {
+                        Common.showToast('Erro ao enviar mensagem: ' + (data.error || 'Erro desconhecido'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending message:', error);
+                    Common.showToast('Erro ao enviar mensagem.');
+                })
+                .finally(() => { sendButton.disabled = false; });
             });
-        });
+        }
     }
 
     // Load user settings into forms
