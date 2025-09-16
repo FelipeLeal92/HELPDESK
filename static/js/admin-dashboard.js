@@ -1438,39 +1438,49 @@ const AdminDashboard = (function() {
         // Form handlers for ticket actions
         const replyTicketForm = document.getElementById('reply-ticket-form');
         if (replyTicketForm) {
-            replyTicketForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                const ticketId = document.getElementById('reply-ticket-id-input').value;
-                const message = document.getElementById('reply-message').value;
-                
-                if (!ticketId || !message) {
-                    Common.showToast('Por favor, preencha a mensagem.');
-                    return;
-                }
-                
-                fetch(`/api/tickets/${ticketId}/responses`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ message }),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        Common.showToast('Resposta enviada com sucesso');
-                        Common.hideModal('reply-ticket-modal');
-                        loadRecentTickets();
-                    } else {
-                        Common.showToast(data.error || 'Erro ao enviar resposta');
+            // Evita listeners duplicados e múltiplos envios
+            if (!replyTicketForm._listenerAdded) {
+                replyTicketForm._listenerAdded = true;
+                replyTicketForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+
+                    // Guard contra duplo clique/envio em andamento
+                    if (replyTicketForm._submitting) return;
+                    replyTicketForm._submitting = true;
+                    
+                    const ticketId = document.getElementById('reply-ticket-id-input').value;
+                    const message = document.getElementById('reply-message').value;
+                    
+                    if (!ticketId || !message) {
+                        Common.showToast('Por favor, preencha a mensagem.');
+                        replyTicketForm._submitting = false;
+                        return;
                     }
-                })
-                .catch(error => {
-                    console.error('Error sending reply:', error);
-                    Common.showToast('Erro ao enviar resposta');
+                    
+                    fetch(`/api/tickets/${ticketId}/responses`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ message }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Common.showToast('Resposta enviada com sucesso');
+                            Common.hideModal('reply-ticket-modal');
+                            loadRecentTickets();
+                        } else {
+                            Common.showToast(data.error || 'Erro ao enviar resposta');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error sending reply:', error);
+                        Common.showToast('Erro ao enviar resposta');
+                    })
+                    .finally(() => { replyTicketForm._submitting = false; });
                 });
-            });
+            }
         }
         
         // Form handler para atribuir chamado
@@ -1839,49 +1849,59 @@ const AdminDashboard = (function() {
         const form = document.getElementById('send-message-form');
         if (!form) return;
         
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const ticketId = document.getElementById('message-ticket-id').value;
-            const message = document.getElementById('message-content').value.trim();
-            
-            if (!ticketId) {
-                Common.showToast('Selecione um ticket para enviar a mensagem.');
-                return;
-            }
-            
-            if (!message) {
-                Common.showToast('Digite uma mensagem.');
-                return;
-            }
+        // Evita listeners duplicados e múltiplos envios
+        if (!form._listenerAdded) {
+            form._listenerAdded = true;
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                if (form._submitting) return;
+                form._submitting = true;
+                
+                const ticketId = document.getElementById('message-ticket-id').value;
+                const message = document.getElementById('message-content').value.trim();
+                
+                if (!ticketId) {
+                    Common.showToast('Selecione um ticket para enviar a mensagem.');
+                    form._submitting = false;
+                    return;
+                }
+                
+                if (!message) {
+                    Common.showToast('Digite uma mensagem.');
+                    form._submitting = false;
+                    return;
+                }
 
-            fetch(`/api/tickets/${ticketId}/responses`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ message }),
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    document.getElementById('message-content').value = '';
-                    loadUserMessages(ticketId);
-                    Common.showToast('Mensagem enviada com sucesso!');
-                } else {
-                    Common.showToast('Erro ao enviar mensagem: ' + (data.error || 'Erro desconhecido'));
-                }
-            })
-            .catch(error => {
-                console.error('Error sending message:', error);
-                Common.showToast('Erro ao enviar mensagem.');
+                fetch(`/api/tickets/${ticketId}/responses`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('message-content').value = '';
+                        loadUserMessages(ticketId);
+                        Common.showToast('Mensagem enviada com sucesso!');
+                    } else {
+                        Common.showToast('Erro ao enviar mensagem: ' + (data.error || 'Erro desconhecido'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending message:', error);
+                    Common.showToast('Erro ao enviar mensagem.');
+                })
+                .finally(() => { form._submitting = false; });
             });
-        });
+        }
     }
 
     // Funções públicas
