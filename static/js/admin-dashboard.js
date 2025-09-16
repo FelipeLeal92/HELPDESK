@@ -1943,19 +1943,19 @@ const AdminDashboard = (function() {
         }
         
         // Set up periodic refresh for dashboard data
-        setInterval(() => {
-            const currentSection = document.querySelector('.nav-link.bg-primary-50');
-            if (currentSection) {
-                const sectionName = currentSection.getAttribute('onclick').match(/showSection\('([^']+)'\)/)[1];
-                if (sectionName === 'dashboard') {
-                    loadDashboardData();
-                } else if (sectionName === 'open-tickets') {
-                    loadOpenTickets();
-                } else if (sectionName === 'closed-tickets') {
-                    loadClosedTickets();
-                }
-            }
-        }, 30000); // Refresh every 30 seconds
+        // setInterval(() => {
+        //     const currentSection = document.querySelector('.nav-link.bg-primary-50');
+        //     if (currentSection) {
+        //         const sectionName = currentSection.getAttribute('onclick').match(/showSection\('([^']+)'\)/)[1];
+        //         if (sectionName === 'dashboard') {
+        //             loadDashboardData();
+        //         } else if (sectionName === 'open-tickets') {
+        //             loadOpenTickets();
+        //         } else if (sectionName === 'closed-tickets') {
+        //             loadClosedTickets();
+        //         }
+        //     }
+        // }, 30000); // Refresh every 30 seconds
     }
 
     // Exportar funções públicas

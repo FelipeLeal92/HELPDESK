@@ -65,16 +65,12 @@ const UserDashboard = (function() {
 
     // Função de navegação entre seções
     function showSection(sectionName, event) {
-      const originalShowSection = window.showSection;
-      window.showSection = function(sectionName, event) {
-          originalShowSection(sectionName, event);
-          if (sectionName === 'dashboard') {
-            loadTicketsForSupportSelect();
-          }
-      };  
-      
       const ev = event || window.event;
         if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+
+        if (sectionName === 'dashboard') {
+            loadTicketsForSupportSelect();
+        }
         
         // Hide all sections
         const sections = ['dashboard', 'tickets', 'new-ticket', 'settings', 'help'];
@@ -906,7 +902,7 @@ const UserDashboard = (function() {
             }, 30000);
         }
         // Inicie o refresh periódico
-        setupPeriodicRefresh();
+        // setupPeriodicRefresh();
     }
 
     // Exportar funções públicas
