@@ -340,25 +340,34 @@ const UserDashboard = (function() {
             return;
         }
 
-        container.innerHTML = messages.map(message => `
-            <div class="flex items-start space-x-3 mb-4 ${message.is_admin ? 'justify-end' : ''}">
-                ${!message.is_admin ? `
-                    <div class="h-10 w-10 rounded-full bg-blue-500 text-white flex items-center justify-center flex-shrink-0">
-                        <span class="material-symbols-outlined text-sm">person</span>
-                    </div>
-                ` : ''}
-                <div class="${message.is_admin ? 'bg-primary-100 text-primary-800' : 'bg-gray-100 text-gray-800'} rounded-lg p-3 max-w-xs">
-                    <div class="font-medium">${message.user_name} ${message.is_admin ? '(Suporte)' : '(Você)'}</div>
-                    <p class="text-sm mt-1">${message.message}</p>
-                    <div class="text-xs opacity-70 mt-1">${Common.formatDate(message.created_at)}</div>
-                </div>
-                ${message.is_admin ? `
+        container.innerHTML = messages.map(message => {
+            const isAdmin = message.user_role === 'admin';
+            const messageClass = isAdmin ? 'bg-primary-100 text-primary-800' : 'bg-gray-100 text-gray-800';
+            const alignmentClass = isAdmin ? 'justify-end' : 'justify-start';
+            const avatar = isAdmin 
+                ? `
                     <div class="h-10 w-10 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0">
                         <span class="material-symbols-outlined text-sm">support_agent</span>
                     </div>
-                ` : ''}
-            </div>
-        `).join('');
+                `
+                : `
+                    <div class="h-10 w-10 rounded-full bg-blue-500 text-white flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined text-sm">person</span>
+                    </div>
+                `;
+
+            return `
+                <div class="flex items-start space-x-3 mb-4 ${alignmentClass}">
+                    ${!isAdmin ? avatar : ''}
+                    <div class="${messageClass} rounded-lg p-3 max-w-xs md:max-w-md">
+                        <div class="font-medium text-sm">${message.user_name} ${isAdmin ? '(Suporte)' : '(Você)'}</div>
+                        <p class="text-sm mt-1">${message.message}</p>
+                        <div class="text-xs opacity-70 mt-2 text-right">${Common.formatDate(message.created_at)}</div>
+                    </div>
+                    ${isAdmin ? avatar : ''}
+                </div>
+            `;
+        }).join('');
 
         // Rolar para o final
         container.scrollTop = container.scrollHeight;

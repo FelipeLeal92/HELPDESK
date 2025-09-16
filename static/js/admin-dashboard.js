@@ -198,9 +198,11 @@ const AdminDashboard = (function() {
         fetch('/api/admin/stats')
             .then(response => response.json())
             .then(data => {
-                document.getElementById('total-tickets-admin').textContent = data.total || 0;
-                document.getElementById('open-tickets-admin').textContent = data.open || 0;
-                document.getElementById('resolved-tickets-admin').textContent = data.resolved || 0;
+                if (data.success && data.stats) {
+                    document.getElementById('total-tickets-admin').textContent = data.stats.total || 0;
+                    document.getElementById('open-tickets-admin').textContent = data.stats.open || 0;
+                    document.getElementById('resolved-tickets-admin').textContent = data.stats.resolved || 0;
+                }
             })
             .catch(error => console.error('Error loading dashboard data:', error));
         
@@ -233,7 +235,7 @@ const AdminDashboard = (function() {
         fetch('/api/tickets')
             .then(response => response.json())
             .then(tickets => {
-                closedTickets = tickets.filter(t => ['Resolvido', 'Fechado', 'Cancelado'].includes(t.status));
+                closedTickets = tickets.filter(t => ['Resolvido', 'Fechado', 'Cancelado', 'Concluído', 'Finalizado'].includes(t.status));
                 updateClosedTicketsTable(closedTickets);
             })
             .catch(error => console.error('Error loading closed tickets:', error));
@@ -304,10 +306,10 @@ const AdminDashboard = (function() {
     }
 
     function loadUserMessages(ticketId) {
+        const container = document.getElementById('user-messages-container');
         if (!ticketId) {
-            const tbody = document.getElementById('user-messages-tbody');
-            if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Selecione um ticket para ver as mensagens.</td></tr>';
+            if (container) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-8">Selecione um ticket para ver as mensagens.</div>';
             }
             return;
         }
@@ -320,13 +322,12 @@ const AdminDashboard = (function() {
                 return response.json();
             })
             .then(data => {
-                updateUserMessagesTable(data);
+                updateUserMessages(data);
             })
             .catch(error => {
                 console.error('Error loading user messages:', error);
-                const tbody = document.getElementById('user-messages-tbody');
-                if (tbody) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm text-red-500 text-center">Erro ao carregar mensagens.</td></tr>';
+                if (container) {
+                    container.innerHTML = '<div class="text-center text-red-500 py-8">Erro ao carregar mensagens.</div>';
                 }
             });
     }
@@ -624,7 +625,7 @@ const AdminDashboard = (function() {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.email}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.phone || '-'}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    <span class="px-2 py-1 text-xs rounded-full ${
+                    <span class="px-2 py-1 text-xs rounded-full ${ 
                         user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 
                         user.role === 'manager' ? 'bg-green-100 text-green-800' : 
                         'bg-blue-100 text-blue-800'
@@ -651,28 +652,46 @@ const AdminDashboard = (function() {
         `).join('');
     }
 
-    function updateUserMessagesTable(messages) {
-        const tbody = document.getElementById('user-messages-tbody');
-        if (!tbody) return;
-        
-        tbody.innerHTML = '';
+    function updateUserMessages(messages) {
+        const container = document.getElementById('user-messages-container');
+        if (!container) return;
         
         if (messages.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Nenhuma mensagem encontrada para este ticket.</td></tr>';
+            container.innerHTML = '<div class="text-center text-gray-500 py-8">Nenhuma mensagem encontrada para este ticket.</div>';
             return;
         }
-        
-        messages.forEach(message => {
-            const row = tbody.insertRow();
-            row.innerHTML = `
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${message.ticket_id || message.id}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${message.user_name} ${message.is_admin ? '<span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Admin</span>' : ''}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${message.message}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${Common.formatDate(message.created_at)}</td>
+
+        container.innerHTML = messages.map(message => {
+            const isAdmin = message.user_role === 'admin';
+            const messageClass = isAdmin ? 'bg-primary-100 text-primary-800' : 'bg-gray-100 text-gray-800';
+            const alignmentClass = isAdmin ? 'justify-end' : 'justify-start';
+            const avatar = isAdmin 
+                ? `
+                    <div class="h-10 w-10 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined text-sm">support_agent</span>
+                    </div>
+                `
+                : `
+                    <div class="h-10 w-10 rounded-full bg-blue-500 text-white flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined text-sm">person</span>
+                    </div>
+                `;
+
+            return `
+                <div class="flex items-start space-x-3 mb-4 ${alignmentClass}">
+                    ${!isAdmin ? avatar : ''}
+                    <div class="${messageClass} rounded-lg p-3 max-w-xs md:max-w-md">
+                        <div class="font-medium text-sm">${message.user_name} ${isAdmin ? '(Você)' : ''}</div>
+                        <p class="text-sm mt-1">${message.message}</p>
+                        <div class="text-xs opacity-70 mt-2 text-right">${Common.formatDate(message.created_at)}</div>
+                    </div>
+                    ${isAdmin ? avatar : ''}
+                </div>
             `;
-        });
+        }).join('');
+
+        // Scroll to bottom
+        container.scrollTop = container.scrollHeight;
     }
     
     // Função para detectar o papel do usuário
@@ -1433,9 +1452,9 @@ const AdminDashboard = (function() {
                 fetch(`/api/tickets/${ticketId}/responses`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message })
+                    body: JSON.stringify({ message }),
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -1841,7 +1860,7 @@ const AdminDashboard = (function() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message: message }),
+                body: JSON.stringify({ message }),
             })
             .then(response => {
                 if (!response.ok) {

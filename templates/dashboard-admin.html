@@ -504,20 +504,8 @@
             </form>
           </div>
           
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID do Chamado</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mensagem</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200" id="user-messages-tbody">
-                <!-- User messages will be loaded here -->
-              </tbody>
-            </table>
+          <div id="user-messages-container" class="mt-6 space-y-4 h-96 overflow-y-auto p-4 border rounded-lg bg-gray-50">
+            <!-- Messages will be loaded here -->
           </div>
         </div>
       </main>

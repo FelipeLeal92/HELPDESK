@@ -21,6 +21,10 @@ app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = 'SECRET-KEY'
 app.permanent_session_lifetime = timedelta(days=7)
 
+OPEN_STATUSES = ('Aberto', 'Em Andamento', 'Pendente')
+RESOLVED_STATUSES = ('Resolvido', 'Fechado', 'Concluído', 'Finalizado')
+CANCELLED_STATUSES = ('Cancelado',)
+
 # Uploads configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf', 'xls', 'xlsx', 'csv'}
@@ -272,7 +276,7 @@ def run_query(query, params=None, fetchone=False, fetchall=False, commit=False, 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor if dict_cursor else None)
     try:
-        cur.execute(query, params or ())
+        cur.execute(query, params or ()) 
         result = None
         if fetchone:
             result = cur.fetchone()
@@ -334,6 +338,7 @@ def notify_user_ticket_update(user_id: int, ticket: dict, event_type: str):
             message += f"<b>Evento:</b> {event_type}"
             
             try:
+                
                 send_telegram_notification(message, event_type)
             except Exception as e:
                 print(f"Erro ao enviar Telegram: {str(e)}")
@@ -625,68 +630,172 @@ def api_help_center():
 
 
 @app.route('/api/tickets', methods=['GET', 'POST'])
-def api_get_tickets():
+def api_tickets():
     if 'user_id' not in session:
-        print("ERRO: Usuário não está na sessão")
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    print(f"=== API TICKETS ===")
-    print(f"User ID: {session.get('user_id')}")
-    print(f"User Role: {session.get('user_role')}")
-    print(f"Is Admin: {session.get('is_admin')}")
-    
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=DictCursor)
-    try:
-        if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
-            cur.execute('''
-                SELECT t.id, 
-                       t.type, 
-                       t.priority, 
-                       t.subject, 
-                       t.status, 
-                       COALESCE(u.name, '') as user_name, 
-                       COALESCE(a.name, '') as assigned_to_name,
-                       t.created_at,
-                       t.updated_at
-                FROM tickets t 
-                LEFT JOIN users u ON t.user_id = u.id 
-                LEFT JOIN users a ON t.assigned_to = a.id
-                ORDER BY t.created_at DESC
-            ''')
+
+    # Handle POST for creating tickets
+    if request.method == 'POST':
+        def after_insert_notify(conn, ticket_id):
+            cur = conn.cursor(cursor_factory=DictCursor)
+            cur.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s', (ticket_id,))
+            t = cur.fetchone()
+            if t:
+                log_event(t['user_id'], f"Novo ticket criado: {t['subject']}", ticket_id)
+                notify_user_ticket_update(t['user_id'], dict(t), 'created')
+                cur.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
+                admins = cur.fetchall()
+                for admin in admins:
+                    log_event(admin['id'], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
+                    push_event(admin['id'], {'type': 'ticket_update', 'event': 'created', 'ticket': dict(t)})
+                
+                # Notificação para administradores no Telegram
+                try:
+                    user_name = session.get('user_name', 'Usuário')
+                    ticket_type = t.get('type', 'N/A')
+                    priority = t.get('priority', 'N/A')
+                    subject = t.get('subject') or (t.get('description', '')[:50])
+
+                    message = (
+                        f"\U0001F4E8 <b>Novo Chamado Criado</b>\n\n"
+                        f"<b>ID:</b> #{ticket_id}\n"
+                        f"<b>Usuário:</b> {user_name}\n"
+                        f"<b>Tipo:</b> {ticket_type}\n"
+                        f"<b>Prioridade:</b> {priority}\n"
+                        f"<b>Assunto:</b> {subject}"
+                    )
+                    send_telegram_notification(message, 'created')
+                except Exception as e:
+                    print(f"Erro ao enviar notificação de novo ticket para Telegram: {str(e)}")
+            cur.close()
+
+        # If multipart/form-data (supports attachments)
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            form = request.form
+            type_ = form.get('type')
+            priority = form.get('priority')
+            subject = form.get('subject', '')
+            description = form.get('description')
+            if not type_ or not priority or not description:
+                return jsonify({'error': 'Campos obrigatórios ausentes'}), 400
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            try:
+                cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
+                            (session['user_id'], type_, priority, subject, description, 'Aberto'))
+                ticket_id = cur.fetchone()[0]
+                files = request.files.getlist('attachments')
+                for f in files:
+                    if f and allowed_file(f.filename):
+                        f.seek(0, os.SEEK_END)
+                        size = f.tell()
+                        f.seek(0)
+                        if size > MAX_FILE_SIZE:
+                            return jsonify({'error': f'Arquivo muito grande: {f.filename}. Limite 10MB por arquivo.'}), 400
+                        original = secure_filename(f.filename)
+                        unique_name = f"{ticket_id}_{secrets.token_hex(4)}_{original}"
+                        save_path = os.path.join(UPLOAD_FOLDER, unique_name)
+                        f.save(save_path)
+                        filesize = os.path.getsize(save_path)
+                        cur.execute('''INSERT INTO attachments (ticket_id, filename, filepath, filesize)
+                                       VALUES (%s, %s, %s, %s)''',
+                                    (ticket_id, original, unique_name, filesize))
+                    elif f:
+                        return jsonify({'error': f'Extensão não permitida: {f.filename}'}), 400
+                
+                after_insert_notify(conn, ticket_id)
+                return jsonify({'success': True, 'ticket_id': ticket_id})
+            except Exception as e:
+                print(f"Erro ao criar ticket (form-data): {e}")
+                return jsonify({'error': 'Erro interno ao criar ticket'}), 500
+            finally:
+                cur.close()
+                conn.close()
+
+        # JSON fallback (without attachments)
         else:
-            cur.execute('''
-                SELECT id, type, priority, subject, status, 
-                       (SELECT name FROM users WHERE id = user_id) as user_name,
-                       (SELECT name FROM users WHERE id = assigned_to) as assigned_to_name,
-                       created_at,
-                       updated_at
-                FROM tickets 
-                WHERE user_id = %s 
-                ORDER BY created_at DESC
-            ''', (session['user_id'],))
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'Request must be JSON'}), 400
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            try:
+                cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
+                            (session['user_id'], data['type'], data['priority'], 
+                             data.get('subject', ''), data['description'], 'Aberto'))
+                ticket_id = cur.fetchone()[0]
+                after_insert_notify(conn, ticket_id)
+                return jsonify({'success': True, 'ticket_id': ticket_id})
+            except Exception as e:
+                print(f"Erro ao criar ticket (JSON): {e}")
+                return jsonify({'error': 'Erro interno ao criar ticket'}), 500
+            finally:
+                cur.close()
+                conn.close()
+
+    # Handle GET for listing tickets
+    else: # request.method == 'GET'
+        print(f"=== API TICKETS (GET) ===")
+        print(f"User ID: {session.get('user_id')}")
+        print(f"User Role: {session.get('user_role')}")
+        print(f"Is Admin: {session.get('is_admin')}")
         
-        tickets = cur.fetchall()
-        print(f"Retornando {len(tickets)} tickets")
-        
-        formatted_tickets = []
-        for ticket in tickets:
-            ticket_dict = dict(ticket)
-            ticket_dict['created_at'] = format_date(ticket_dict.get('created_at'))
-            ticket_dict['updated_at'] = format_date(ticket_dict.get('updated_at'))
-            ticket_dict['user_name'] = ticket_dict.get('user_name', '')
-            ticket_dict['assigned_to_name'] = ticket_dict.get('assigned_to_name', '')
-            formatted_tickets.append(ticket_dict)
-        
-        return jsonify(formatted_tickets)
-        
-    except Exception as e:
-        print(f"ERRO ao carregar tickets: {str(e)}")
-        print(f"Tipo do erro: {type(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        cur.close()
-        conn.close()
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=DictCursor)
+        try:
+            if session.get('is_admin') or session.get('user_role') in ['admin', 'manager']:
+                cur.execute('''
+                    SELECT t.id, 
+                           t.type, 
+                           t.priority, 
+                           t.subject, 
+                           t.status, 
+                           COALESCE(u.name, '') as user_name, 
+                           COALESCE(a.name, '') as assigned_to_name,
+                           t.created_at,
+                           t.updated_at
+                    FROM tickets t 
+                    LEFT JOIN users u ON t.user_id = u.id 
+                    LEFT JOIN users a ON t.assigned_to = a.id
+                    ORDER BY t.created_at DESC
+                ''')
+            else:
+                cur.execute('''
+                    SELECT id, type, priority, subject, status, 
+                           (SELECT name FROM users WHERE id = user_id) as user_name,
+                           (SELECT name FROM users WHERE id = assigned_to) as assigned_to_name,
+                           created_at,
+                           updated_at
+                    FROM tickets 
+                    WHERE user_id = %s 
+                    ORDER BY created_at DESC
+                ''', (session['user_id'],))
+            
+            tickets = cur.fetchall()
+            print(f"Retornando {len(tickets)} tickets")
+            
+            formatted_tickets = []
+            for ticket in tickets:
+                ticket_dict = dict(ticket)
+                ticket_dict['created_at'] = format_date(ticket_dict.get('created_at'))
+                ticket_dict['updated_at'] = format_date(ticket_dict.get('updated_at'))
+                ticket_dict['user_name'] = ticket_dict.get('user_name', '')
+                ticket_dict['assigned_to_name'] = ticket_dict.get('assigned_to_name', '')
+                formatted_tickets.append(ticket_dict)
+            
+            return jsonify(formatted_tickets)
+            
+        except Exception as e:
+            print(f"ERRO ao carregar tickets: {str(e)}")
+            print(f"Tipo do erro: {type(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            cur.close()
+            conn.close()
 
 
 @app.route('/api/tickets/<int:ticket_id>', methods=['GET'])
@@ -765,84 +874,6 @@ def api_get_ticket(ticket_id):
         cur.close()
         conn.close()
 
-
-@app.route('/api/tickets', methods=['POST'])
-def api_create_ticket():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    def after_insert_notify(conn, ticket_id):
-        cur = conn.cursor(cursor_factory=DictCursor)
-        # Build ticket dict for notifications
-        cur.execute('SELECT id, user_id, type, priority, subject, description, status FROM tickets WHERE id = %s', (ticket_id,))
-        t = cur.fetchone()
-        if t:
-            log_event(t['user_id'], f"Novo ticket criado: {t['subject']}", ticket_id)
-            notify_user_ticket_update(t['user_id'], t, 'created')
-            cur.execute("SELECT id FROM users WHERE is_admin = TRUE OR role IN ('admin', 'manager')")
-            admins = cur.fetchall()
-            for admin in admins:
-                log_event(admin['id'], f"Novo ticket #{ticket_id} criado por {session['user_name']}", ticket_id)
-                push_event(admin['id'], {'type': 'ticket_update', 'event': 'created', 'ticket': t})
-        cur.close()
-    # If multipart/form-data (supports attachments)
-    if request.content_type and 'multipart/form-data' in request.content_type:
-        form = request.form
-        type_ = form.get('type')
-        priority = form.get('priority')
-        subject = form.get('subject', '')
-        description = form.get('description')
-        if not type_ or not priority or not description:
-            return jsonify({'error': 'Campos obrigatórios ausentes'}), 400
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
-                    (session['user_id'], type_, priority, subject, description, 'Aberto'))
-        ticket_id = cur.fetchone()[0]
-        files = request.files.getlist('attachments')
-        for f in files:
-            if f and allowed_file(f.filename):
-                # Enforce per-file size limit (10MB)
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                f.seek(0)
-                if size > MAX_FILE_SIZE:
-                    conn.rollback()
-                    cur.close()
-                    conn.close()
-                    return jsonify({'error': f'Arquivo muito grande: {f.filename}. Limite 10MB por arquivo.'}), 400
-                original = secure_filename(f.filename)
-                unique_name = f"{ticket_id}_{secrets.token_hex(4)}_{original}"
-                save_path = os.path.join(UPLOAD_FOLDER, unique_name)
-                f.save(save_path)
-                filesize = os.path.getsize(save_path)
-                cur.execute('''INSERT INTO attachments (ticket_id, filename, filepath, filesize)
-                               VALUES (%s, %s, %s, %s)''',
-                            (ticket_id, original, unique_name, filesize))
-            elif f:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({'error': f'Extensão não permitida: {f.filename}'}), 400
-        after_insert_notify(conn, ticket_id)
-        cur.close()
-        conn.close()
-        return jsonify({'success': True, 'ticket_id': ticket_id})
-    # JSON fallback (without attachments)
-    data = request.get_json()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
-                (session['user_id'], data['type'], data['priority'], 
-                 data.get('subject', ''), data['description'], 'Aberto'))
-    ticket_id = cur.fetchone()[0]
-    after_insert_notify(conn, ticket_id)
-    cur.close()
-    conn.close()
-    
-    return jsonify({'success': True, 'ticket_id': ticket_id})
-
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     # Serve uploaded files
@@ -861,13 +892,12 @@ def api_admin_stats():
         SELECT
             COUNT(*) AS total,
             COUNT(*) FILTER (
-                WHERE ts.name IN ('Aberto', 'Em Andamento', 'Pendente')
+                WHERE status IN ('Aberto', 'Em Andamento', 'Pendente')
             ) AS open,
             COUNT(*) FILTER (
-                WHERE ts.name IN ('Resolvido', 'Fechado', 'Concluído', 'Finalizado')
+                WHERE status IN ('Resolvido', 'Fechado', 'Concluído', 'Finalizado')
             ) AS resolved
-        FROM tickets t
-        LEFT JOIN ticket_statuses ts ON t.status_id = ts.id
+        FROM tickets
     """, fetchone=True, dict_cursor=True) or {'total': 0, 'open': 0, 'resolved': 0}
 
     return jsonify({
@@ -1280,20 +1310,43 @@ def api_create_ticket_response(ticket_id):
     elif not (is_owner or is_staff):
         return jsonify({'error': 'Forbidden'}), 403
 
-    # Inserir resposta e obter ID
+    # Inserir resposta e obter ID e data de criação
     response_row = run_query("""
-        INSERT INTO ticket_responses (ticket_id, user_id, message)
-        VALUES (%s, %s, %s)
-        RETURNING id
+        INSERT INTO ticket_responses (ticket_id, user_id, message, created_at)
+        VALUES (%s, %s, %s, NOW())
+        RETURNING id, created_at
     """, (ticket_id, session['user_id'], message), fetchone=True, commit=True)
 
     response_id = response_row[0] if response_row else None
+    response_created_at = response_row[1] if response_row else datetime.now()
 
     # Notificações
     if is_staff:
         log_event(ticket['user_id'], f"O suporte respondeu ao seu ticket #{ticket_id}.", ticket_id)
-        notify_user_ticket_update(ticket['user_id'], dict(ticket), 'response_admin')
+        
+        # Get user preferences for SMS and Push
+        user_prefs = run_query("SELECT phone, sms_urgent, push_realtime FROM users WHERE id = %s", (ticket['user_id'],), fetchone=True, dict_cursor=True)
 
+        # Send SMS if urgent
+        if user_prefs and user_prefs['sms_urgent'] and ticket.get('priority') == 'Urgente' and user_prefs['phone']:
+            sms_body = f"[URGENTE] Nova resposta do suporte no chamado #{ticket.get('id')}"
+            send_sms(user_prefs['phone'], sms_body)
+
+        # Send Push via SSE with detailed response object
+        if user_prefs and user_prefs['push_realtime']:
+            push_event(ticket['user_id'], {
+                'type': 'new_response',
+                'ticket_id': ticket_id,
+                'response': {
+                    'id': response_id,
+                    'message': message,
+                    'user_name': session['user_name'],
+                    'user_role': session.get('user_role', 'admin'),
+                    'created_at': format_date(response_created_at)
+                }
+            })
+
+        # Send ONE detailed Telegram notification
         try:
             admin_name = session.get('user_name', 'Administrador')
             assignee = assigned_user['name'] if assigned_user and 'name' in assigned_user else None
@@ -1312,15 +1365,35 @@ def api_create_ticket_response(ticket_id):
             send_telegram_notification(response_message, 'response_admin')
         except Exception as e:
             print(f"Erro ao enviar notificação de resposta admin: {str(e)}")
-    else:
+
+    else: # User is replying
         staff_users = run_query(
-            "SELECT id FROM users WHERE is_admin = TRUE",
+            "SELECT id FROM users WHERE role IN ('admin', 'manager')",
             fetchall=True,
             dict_cursor=True
         )
+        
+        # Create a serializable ticket dictionary to notify admins
+        serializable_ticket = dict(ticket)
+        serializable_ticket['created_at'] = format_date(serializable_ticket.get('created_at'))
+        serializable_ticket['updated_at'] = format_date(serializable_ticket.get('updated_at'))
+        serializable_ticket['closed_at'] = format_date(serializable_ticket.get('closed_at'))
+
         for staff in staff_users:
             log_event(staff['id'], f"Nova resposta do usuário no ticket #{ticket_id}", ticket_id)
-            push_event(staff['id'], {'type': 'ticket_update', 'event': 'response_user', 'ticket': dict(ticket)})
+            # Push a more detailed event to admins
+            push_event(staff['id'], {
+                'type': 'new_response',
+                'ticket_id': ticket_id,
+                'ticket_subject': serializable_ticket['subject'],
+                'response': {
+                    'id': response_id,
+                    'message': message,
+                    'user_name': session['user_name'],
+                    'user_role': 'user',
+                    'created_at': format_date(response_created_at)
+                }
+            })
 
         try:
             user_name = ticket['user_name'] if ticket['user_name'] else 'Usuário'
@@ -1341,13 +1414,10 @@ def api_create_ticket_response(ticket_id):
         except Exception as e:
             print(f"Erro ao enviar notificação de resposta usuário: {str(e)}")
 
-    # Retorna também a data de criação do ticket formatada
-    created_at_formatted = format_date(ticket.get('created_at'))
-
     return jsonify({
         'success': True,
         'response_id': response_id,
-        'ticket_created_at': created_at_formatted
+        'created_at': format_date(response_created_at)
     })
 
 
@@ -1449,7 +1519,7 @@ def api_test_telegram():
 
         # Envia mensagem de teste para o grupo
         test_message = (
-            "\U0001F916 <b>Teste de Conexão</b>\n\n"
+            f"\U0001F916 <b>Teste de Conexão</b>\n\n"
             f"Bot <b>@{bot_name}</b> conectado com sucesso!\n"
             "Sistema HelpDesk configurado."
         )
@@ -1570,7 +1640,7 @@ def api_admin_assign_ticket(ticket_id):
             )
 
             assignment_message = (
-                "\U0001F464 <b>Chamado Atribuído</b>\n\n"
+                f"\U0001F464 <b>Chamado Atribuído</b>\n\n"
                 f"<b>ID:</b> #{ticket_id}\n"
                 f"<b>Responsável:</b> {assigned_user['name']}\n"
                 f"<b>Tipo:</b> {ticket_type}\n"
@@ -1669,7 +1739,7 @@ def api_admin_cancel_ticket(ticket_id):
             )
 
             cancel_message = (
-                "\U0000274C <b>Chamado Cancelado</b>\n\n"
+                f"\U0000274C <b>Chamado Cancelado</b>\n\n"
                 f"<b>ID:</b> #{ticket_id}\n"
                 f"<b>Cancelado por:</b> {manager_name}\n"
                 f"<b>Usuário:</b> {user_name}\n"
