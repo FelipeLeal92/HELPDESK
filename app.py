@@ -1,7 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import ssl
 from flask import Flask, render_template, request, redirect, url_for, session, make_response, flash, jsonify, send_from_directory, Response, stream_with_context
 import psycopg2
 from psycopg2 import IntegrityError
