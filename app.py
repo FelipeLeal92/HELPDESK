@@ -229,7 +229,8 @@ def ensure_schema_and_password_hash():
             ('telegram_topic_messages', ''),
             ('telegram_topic_assignments', ''),
             ('telegram_topic_closed', ''),
-            ('telegram_topic_cancelled', '')
+            ('telegram_topic_cancelled', ''),
+            ('help_center', json.dumps(default_help_center_config))
         ]
         for k, v in defaults:
             cur.execute("""
@@ -718,23 +719,38 @@ def api_tickets():
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'Request must be JSON'}), 400
+
+            type_ = data.get('type')
+            priority = data.get('priority')
+            subject = data.get('subject', '')
+            description = data.get('description')
+
+            if not type_ or not priority or not description:
+                return jsonify({'error': 'Campos obrigatórios ausentes'}), 400
             
-            conn = get_db_connection()
-            cur = conn.cursor()
             try:
-                cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
-                            (session['user_id'], data['type'], data['priority'], 
-                             data.get('subject', ''), data['description'], 'Aberto'))
-                ticket_id = cur.fetchone()[0]
-                after_insert_notify(conn, ticket_id)
+                conn = get_db_connection()
+                with conn.cursor() as cur:
+                    cur.execute('''INSERT INTO tickets (user_id, type, priority, subject, description, status, created_at)
+                                    VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id''',
+                                (session['user_id'], type_, priority, subject, description, 'Aberto'))
+                    ticket_id = cur.fetchone()[0]
+                    conn.commit()  # Commit after insert to get ID
+
+                # Handle notifications after transaction
+                with conn.cursor(cursor_factory=DictCursor) as cur:
+                    cur.execute('SELECT * FROM tickets WHERE id = %s', (ticket_id,))
+                    new_ticket = cur.fetchone()
+                    if new_ticket:
+                        after_insert_notify(conn, new_ticket)
+
                 return jsonify({'success': True, 'ticket_id': ticket_id})
             except Exception as e:
                 print(f"Erro ao criar ticket (JSON): {e}")
                 return jsonify({'error': 'Erro interno ao criar ticket'}), 500
             finally:
-                cur.close()
-                conn.close()
+                if conn:
+                    conn.close()
 
     # Handle GET for listing tickets
     else: # request.method == 'GET'
@@ -2117,7 +2133,10 @@ def debug_frontend():
 
 # Substituir a parte final do arquivo por esta:
 
-if __name__ == '__main__':
-    init_database()
 
+# Initialize database and schema
+init_database()
+ensure_schema_and_password_hash()
+
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
