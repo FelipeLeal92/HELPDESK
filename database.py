@@ -98,37 +98,6 @@ def init_database():
     # Create settings table
     c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
 
-
-    # Insert default ticket types
-    ticket_types = [
-        ('Suporte Técnico', 'Problemas técnicos e dúvidas sobre o sistema'),
-        ('Hardware', 'Problemas com equipamentos e hardware'),
-        ('Software', 'Problemas com software e aplicações'),
-        ('Rede', 'Problemas de conectividade e rede'),
-        ('Acesso', 'Problemas de login e permissões'),
-        ('Faturamento', 'Questões relacionadas a cobrança e pagamentos'),
-        ('Instalação', 'Solicitações de instalação de software/hardware'),
-        ('Melhoria', 'Sugestões de melhorias no sistema'),
-        ('Bug', 'Relatos de bugs e erros no sistema'),
-        ('Outro', 'Outros tipos de solicitação')
-    ]
-    
-    for type_name, description in ticket_types:
-        c.execute("INSERT INTO ticket_types (name, description) VALUES (%s, %s) ON CONFLICT DO NOTHING", (type_name, description))
-
-    # Insert default ticket statuses
-    statuses = [
-        ('Aberto', '#blue'),
-        ('Em Andamento', '#yellow'),
-        ('Pendente', '#orange'),
-        ('Resolvido', '#green'),
-        ('Fechado', '#gray'),
-        ('Cancelado', '#red')
-    ]
-    
-    for status_name, color in statuses:
-        c.execute("INSERT INTO ticket_statuses (name, color) VALUES (%s, %s) ON CONFLICT DO NOTHING", (status_name, color))
-
     conn.commit()
     c.close()
     conn.close()
