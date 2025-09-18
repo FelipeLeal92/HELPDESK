@@ -1,6 +1,12 @@
 // static/js/common.js
 const Common = (function() {
     // Funções compartilhadas entre todos os dashboards
+    function escapeHTML(s) {
+        if (s == null) return '';
+        const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'};
+        return String(s).replace(/[&<>"'`=\/]/g, c => map[c] || c);
+    }
+
     function showToast(message, duration = 4000) {
         const toast = document.createElement('div');
         toast.className = 'fixed bottom-4 right-4 bg-black text-white px-4 py-2 rounded shadow z-50';
@@ -8,10 +14,7 @@ const Common = (function() {
         toast.setAttribute('role', 'alert');
         toast.setAttribute('aria-live', 'assertive');
         document.body.appendChild(toast);
-        
-        setTimeout(() => {
-            toast.remove();
-        }, duration);
+        setTimeout(() => { toast.remove(); }, duration);
     }
 
     function showModal(modalId) {
@@ -113,6 +116,7 @@ const Common = (function() {
 
     // Exportar funções públicas
     return {
+        escapeHTML,
         showToast,
         showModal,
         hideModal,

@@ -3,13 +3,27 @@ load_dotenv()
 
 #Database.py
 import psycopg2
+import sqlite3
 import os
 import hashlib
 from psycopg2.extras import DictCursor
 
 def get_db_connection():
-    print(f"DATABASE_URL: {os.environ.get('DATABASE_URL')}")
-    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    """Conecta ao Postgres se DATABASE_URL estiver definido, caso contrário usa SQLite local."""
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        # Evitar logar credenciais
+        print("DATABASE_URL configurado (redigido).")
+        # Forçar SSL se for Postgres e não houver parâmetro
+        if 'postgres' in database_url and 'sslmode=' not in database_url:
+            sep = '&' if '?' in database_url else '?'
+            database_url = f"{database_url}{sep}sslmode=require"
+        return psycopg2.connect(database_url)
+    # Fallback SQLite
+    db_path = os.path.join(os.path.dirname(__file__), 'helpdesk.db')
+    print(f"DATABASE_URL ausente. Usando SQLite em {db_path}")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     return conn
 
 def init_database():

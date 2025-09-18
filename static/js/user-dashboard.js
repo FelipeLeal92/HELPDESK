@@ -7,6 +7,7 @@ const UserDashboard = (function() {
     let ticketsPerPage = 5;
     let currentSupportTicket = null;
     let evtSource = null;
+    let isSendingResponse = false; // Flag para prevenir envios simultâneos
 
     let sortState = {
     recent: { column: null, direction: 'asc' },
@@ -254,10 +255,10 @@ const UserDashboard = (function() {
         tbody.innerHTML = ticketsToShow.map(ticket => `
             <tr class="border-b hover:bg-gray-50 transition-colors">
                 <td class="py-3 px-4">#${ticket.id}</td>
-                <td class="py-3 px-4">${ticket.type}</td>
-                <td class="py-3 px-4">${ticket.priority}</td>
+                <td class="py-3 px-4">${Common.escapeHTML(ticket.type)}</td>
+                <td class="py-3 px-4">${Common.escapeHTML(ticket.priority)}</td>
                 <td class="py-3 px-4">
-                    <span class="px-2 py-1 rounded-full text-xs ${Common.getStatusColor(ticket.status)}">${ticket.status}</span>
+                    <span class="px-2 py-1 rounded-full text-xs ${Common.getStatusColor(ticket.status)}">${Common.escapeHTML(ticket.status)}</span>
                 </td>
                 <td class="py-3 px-4">${Common.formatDate(ticket.created_at)}</td>
                 <td class="py-3 px-4">
@@ -276,11 +277,11 @@ const UserDashboard = (function() {
         allTbody.innerHTML = allUserTickets.map(ticket => `
             <tr class="border-b hover:bg-gray-50 transition-colors">
                 <td class="py-3 px-4">#${ticket.id}</td>
-                <td class="py-3 px-4">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
-                <td class="py-3 px-4">${ticket.type}</td>
-                <td class="py-3 px-4">${ticket.priority}</td>
+                <td class="py-3 px-4">${Common.escapeHTML(ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : ''))}</td>
+                <td class="py-3 px-4">${Common.escapeHTML(ticket.type)}</td>
+                <td class="py-3 px-4">${Common.escapeHTML(ticket.priority)}</td>
                 <td class="py-3 px-4">
-                    <span class="px-2 py-1 rounded-full text-xs ${Common.getStatusColor(ticket.status)}">${ticket.status}</span>
+                    <span class="px-2 py-1 rounded-full text-xs ${Common.getStatusColor(ticket.status)}">${Common.escapeHTML(ticket.status)}</span>
                 </td>
                 <td class="py-3 px-4">${ticket.created_at ? Common.formatDate(ticket.created_at) : ''}</td>
                 <td class="py-3 px-4">
@@ -735,18 +736,28 @@ const UserDashboard = (function() {
         if (!sendButton) return;
         
         sendButton.addEventListener('click', function() {
+            if (isSendingResponse) {
+                return; // Já está enviando
+            }
+
             const ticketId = document.getElementById('support-ticket-select').value;
             const message = document.getElementById('support-message').value.trim();
-            
+
             if (!ticketId) {
                 Common.showToast('Selecione um ticket para enviar a mensagem.');
                 return;
             }
-            
+
             if (!message) {
                 Common.showToast('Digite uma mensagem.');
                 return;
             }
+
+            isSendingResponse = true; // Set flag
+
+            // Disable button to prevent multiple sends
+            sendButton.disabled = true;
+            sendButton.textContent = 'Enviando...';
 
             fetch(`/api/tickets/${ticketId}/responses`, {
                 method: 'POST',
@@ -773,6 +784,12 @@ const UserDashboard = (function() {
             .catch(error => {
                 console.error('Error sending message:', error);
                 Common.showToast('Erro ao enviar mensagem.');
+            })
+            .finally(() => {
+                // Re-enable button
+                sendButton.disabled = false;
+                sendButton.textContent = 'Enviar Mensagem';
+                isSendingResponse = false; // Clear flag
             });
         });
     }

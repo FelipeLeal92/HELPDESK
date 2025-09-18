@@ -12,6 +12,7 @@ const AdminDashboard = (function() {
     let currentMessageTicket = null;
     let users = [];
     let currentUserRole = null;
+    let isSendingResponse = false; // Flag para prevenir envios simultâneos
 
     let sortState = {
     recent: { column: null, direction: 'asc' },
@@ -208,7 +209,7 @@ const AdminDashboard = (function() {
                 const open = data.open || 0;
                 const resolved = data.resolved || 0;
             
-                console.log('Dashboard stats:', { total, open, resolved }); 
+
 
                 // Atualizar os cards
                 updateCardValue('total-tickets-admin', total);
@@ -346,7 +347,7 @@ const AdminDashboard = (function() {
                     tickets.forEach(ticket => {
                         const option = document.createElement('option');
                         option.value = ticket.id;
-                        option.textContent = `#${ticket.id} - ${ticket.subject || (ticket.description ? ticket.description.substring(0, 30) + '...' : '')}`;
+                        option.textContent = `#${ticket.id} - ${Common.escapeHTML(ticket.subject || (ticket.description ? ticket.description.substring(0, 30) + '...' : ''))}`;
                         select.appendChild(option);
                     });
                 }
@@ -366,6 +367,9 @@ const AdminDashboard = (function() {
         fetch(`/api/tickets/${ticketId}/responses`)
             .then(response => {
                 if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('PERMISSION_DENIED');
+                    }
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 return response.json();
@@ -377,7 +381,11 @@ const AdminDashboard = (function() {
                 console.error('Error loading user messages:', error);
                 const tbody = document.getElementById('user-messages-tbody');
                 if (tbody) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm text-red-500 text-center">Erro ao carregar mensagens.</td></tr>';
+                    if (error.message === 'PERMISSION_DENIED') {
+                        tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm text-orange-600 text-center">Você não tem permissão para ver as mensagens deste ticket. O ticket deve estar atribuído a você.</td></tr>';
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm text-red-500 text-center">Erro ao carregar mensagens.</td></tr>';
+                    }
                 }
             });
     }
@@ -390,21 +398,21 @@ const AdminDashboard = (function() {
         tbody.innerHTML = tickets.map(ticket => `
             <tr class="hover:bg-gray-50 transition-all">
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.escapeHTML(ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : ''))}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <div class="flex items-center">
                         <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
-                            ${ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U'}
+                            ${Common.escapeHTML(ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U')}
                         </div>
-                        <span class="ml-2">${ticket.user_name || 'Usuário'}</span>
+                        <span class="ml-2">${Common.escapeHTML(ticket.user_name || 'Usuário')}</span>
                     </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
+                    <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${Common.escapeHTML(ticket.type)}</span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    <span class="px-2 py-1 text-xs rounded-full ${Common.getStatusColor(ticket.status)}">${ticket.status}</span>
-                    ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${ticket.assigned_to_name}</span>` : ''}
+                    <span class="px-2 py-1 text-xs rounded-full ${Common.getStatusColor(ticket.status)}">${Common.escapeHTML(ticket.status)}</span>
+                    ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${Common.escapeHTML(ticket.assigned_to_name)}</span>` : ''}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(ticket.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -458,21 +466,21 @@ const AdminDashboard = (function() {
         tbody.innerHTML = tickets.map(ticket => `
             <tr class="hover:bg-gray-50 transition-all">
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.escapeHTML(ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : ''))}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <div class="flex items-center">
                         <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
-                            ${ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U'}
+                            ${Common.escapeHTML(ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U')}
                         </div>
-                        <span class="ml-2">${ticket.user_name || 'Usuário'}</span>
+                        <span class="ml-2">${Common.escapeHTML(ticket.user_name || 'Usuário')}</span>
                     </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
+                    <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${Common.escapeHTML(ticket.type)}</span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    <span class="px-2 py-1 text-xs rounded-full ${Common.getPriorityColor(ticket.priority)}">${ticket.priority}</span>
-                    ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${ticket.assigned_to_name}</span>` : ''}
+                    <span class="px-2 py-1 text-xs rounded-full ${Common.getPriorityColor(ticket.priority)}">${Common.escapeHTML(ticket.priority)}</span>
+                    ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${Common.escapeHTML(ticket.assigned_to_name)}</span>` : ''}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.formatDate(ticket.created_at)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -525,18 +533,18 @@ const AdminDashboard = (function() {
             return `
                 <tr class="hover:bg-gray-50 transition-all">
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${ticket.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : '')}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.escapeHTML(ticket.subject || (ticket.description ? ticket.description.substring(0, 50) + '...' : ''))}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         <div class="flex items-center">
                             <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium">
-                                ${ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U'}
+                                ${Common.escapeHTML(ticket.user_name ? ticket.user_name.substring(0, 2).toUpperCase() : 'U')}
                             </div>
-                            <span class="ml-2">${ticket.user_name || 'Usuário'}</span>
+                            <span class="ml-2">${Common.escapeHTML(ticket.user_name || 'Usuário')}</span>
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${ticket.type}</span>
-                        ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${ticket.assigned_to_name}</span>` : ''}
+                        <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">${Common.escapeHTML(ticket.type)}</span>
+                        ${ticket.assigned_to_name ? `<br><span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800 mt-1 inline-block" title="Responsável">👤 ${Common.escapeHTML(ticket.assigned_to_name)}</span>` : ''}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${ticket.closed_at ? Common.formatDate(ticket.closed_at) : 'N/A'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${diffDays}d ${diffHours}h</td>
@@ -617,8 +625,8 @@ const AdminDashboard = (function() {
         container.innerHTML = types.map(type => `
             <div class="border rounded-lg p-4 flex justify-between items-center">
                 <div>
-                    <h4 class="font-medium">${type.name}</h4>
-                    <p class="text-sm text-gray-500">${type.description || 'Sem descrição'}</p>
+                    <h4 class="font-medium">${Common.escapeHTML(type.name)}</h4>
+                    <p class="text-sm text-gray-500">${Common.escapeHTML(type.description || 'Sem descrição')}</p>
                 </div>
                 <div class="flex space-x-2">
                     <button class="p-2 rounded-full hover:bg-gray-100 transition-all" onclick="AdminDashboard.editTicketType(${type.id}, '${(type.name || '').replace(/'/g, "'")}', '${type.description ? type.description.replace(/'/g, "'") : ''}')">
@@ -650,7 +658,7 @@ const AdminDashboard = (function() {
                 <div class="flex items-center">
                     <span class="w-3 h-3 rounded-full mr-3" style="background-color: ${status.color}"></span>
                     <div>
-                        <h4 class="font-medium">${status.name}</h4>
+                        <h4 class="font-medium">${Common.escapeHTML(status.name)}</h4>
                     </div>
                 </div>
                 <div class="flex space-x-2">
@@ -671,9 +679,9 @@ const AdminDashboard = (function() {
         
         tbody.innerHTML = usersData.map(user => `
             <tr class="hover:bg-gray-50 transition-all">
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.name}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.email}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.phone || '-'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${Common.escapeHTML(user.name)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.escapeHTML(user.email)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${Common.escapeHTML(user.phone || '-')}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <span class="px-2 py-1 text-xs rounded-full ${
                         user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 
@@ -718,9 +726,9 @@ const AdminDashboard = (function() {
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${message.ticket_id || message.id}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${message.user_name} ${message.is_admin ? '<span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Admin</span>' : ''}
+                    ${Common.escapeHTML(message.user_name)} ${message.is_admin ? '<span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Admin</span>' : ''}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${message.message}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${Common.escapeHTML(message.message)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${Common.formatDate(message.created_at)}</td>
             `;
         });
@@ -1472,15 +1480,28 @@ const AdminDashboard = (function() {
         if (replyTicketForm) {
             replyTicketForm.addEventListener('submit', function(e) {
                 e.preventDefault();
-                
+
+                if (isSendingResponse) {
+                    return; // Já está enviando
+                }
+
                 const ticketId = document.getElementById('reply-ticket-id-input').value;
                 const message = document.getElementById('reply-message').value;
-                
+
                 if (!ticketId || !message) {
                     Common.showToast('Por favor, preencha a mensagem.');
                     return;
                 }
-                
+
+                isSendingResponse = true; // Set flag
+
+                // Disable form to prevent multiple submits
+                const submitBtn = replyTicketForm.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Enviando...';
+                }
+
                 fetch(`/api/tickets/${ticketId}/responses`, {
                     method: 'POST',
                     headers: {
@@ -1501,6 +1522,14 @@ const AdminDashboard = (function() {
                 .catch(error => {
                     console.error('Error sending reply:', error);
                     Common.showToast('Erro ao enviar resposta');
+                })
+                .finally(() => {
+                    // Re-enable form
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Enviar Resposta';
+                    }
+                    isSendingResponse = false; // Clear flag
                 });
             });
         }
@@ -1864,12 +1893,14 @@ const AdminDashboard = (function() {
         }
         
         // Configurar o formulário de mensagens
-        setupMessageForm();
+        // A chamada para setupMessageForm() foi removida para evitar a duplicação de listeners,
+        // pois a configuração do formulário já é feita em setupEventListeners().
     }
     
     function setupMessageForm() {
         const form = document.getElementById('send-message-form');
-        if (!form) return;
+        if (!form || form._listenerAdded) return;
+        form._listenerAdded = true;
         
         form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -1885,6 +1916,15 @@ const AdminDashboard = (function() {
             if (!message) {
                 Common.showToast('Digite uma mensagem.');
                 return;
+            }
+
+            isSendingResponse = true; // Set flag
+
+            // Disable form to prevent multiple submits
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Enviando...';
             }
 
             fetch(`/api/tickets/${ticketId}/responses`, {
@@ -1912,6 +1952,14 @@ const AdminDashboard = (function() {
             .catch(error => {
                 console.error('Error sending message:', error);
                 Common.showToast('Erro ao enviar mensagem.');
+            })
+            .finally(() => {
+                // Re-enable form
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Enviar Mensagem';
+                }
+                isSendingResponse = false; // Clear flag
             });
         });
     }
