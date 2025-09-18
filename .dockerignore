@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtualenv
+.venv/
+
+# VCS
+.git/
+.github/
+
+# Databases & local state
+*.sqlite
+*.db
+helpdesk.db
+helpdesk.db.bak
+uploads/
+
+# Tests
+testes/
+
+# OS/editor
+.DS_Store
+.vscode/
